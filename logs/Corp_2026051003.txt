@@ -1,0 +1,100 @@
+2026-05-10 03:00:02 [Corp] FleetAdmiral: that was a nice kill, check zkill
+2026-05-10 03:00:40 [Corp] DarthMiner: C5 wormhole open from Jita, mapping now 94
+2026-05-10 03:01:13 [Corp] KillmarkCollector: I can bring my Sabre
+2026-05-10 03:01:51 [Corp] DarthMiner: anyone have a cyno?
+2026-05-10 03:02:22 [Corp] FleetAdmiral: I can light one, wait at the sun 64
+2026-05-10 03:02:59 [Corp] Alice Winters: abyssal T6 run, need 1 more
+2026-05-10 03:03:33 [Corp] Alice Winters: anyone have a cyno?
+2026-05-10 03:04:08 [Corp] Sascha Tagger: I'm tackled in Amamake, need help!
+2026-05-10 03:04:44 [Corp] Alice Winters: we need more bombers for tonight's op
+2026-05-10 03:05:20 [Corp] GuristasSpy: anyone have a cyno?
+2026-05-10 03:06:02 [Corp] Bob Vance: need logi for fleet tonight 24
+2026-05-10 03:06:38 [Corp] Odin Valhalla: I just lost my Astero, sad day
+2026-05-10 03:07:13 [Corp] Quinn Ragner: I just lost my Astero, sad day
+2026-05-10 03:07:43 [Corp] Bob Vance: need logi for fleet tonight 54
+2026-05-10 03:08:28 [Corp] EveL0ver: C5 wormhole open from Jita, mapping now 93
+2026-05-10 03:09:04 [Corp] JitaJitaJita: that was a nice kill, check zkill
+2026-05-10 03:09:33 [Corp] Raven Starlight: C5 wormhole open from Jita, mapping now
+2026-05-10 03:10:15 [Corp] Mike Azariah: I can light one, wait at the sun
+2026-05-10 03:10:51 [Corp] Bob Vance: abyssal T6 run, need 1 more 66
+2026-05-10 03:11:21 [Corp] DarthMiner: FC what do we do now? 81
+2026-05-10 03:12:00 [Corp] Bob Vance: need logi for fleet tonight
+2026-05-10 03:12:38 [Corp] Sascha Tagger: FC what do we do now? 80
+2026-05-10 03:13:14 [Corp] FleetAdmiral: I can bring my Sabre 39
+2026-05-10 03:13:43 [Corp] Sascha Tagger: FC what do we do now?
+2026-05-10 03:14:24 [Corp] Logi4Life: I'm tackled in Amamake, need help! 99
+2026-05-10 03:14:58 [Corp] Vladimir Taltos: any miner want to join fleet? Porpoise boost
+2026-05-10 03:15:39 [Corp] GuristasSpy: fleet op successful, thanks everyone
+2026-05-10 03:16:15 [Corp] Quinn Ragner: anyone have a cyno?
+2026-05-10 03:16:50 [Corp] FleetAdmiral: FC what do we do now?
+2026-05-10 03:17:20 [Corp] FleetAdmiral: abyssal T6 run, need 1 more
+2026-05-10 03:17:58 [Corp] Alice Winters: keep D-scan spam, they may have a hunter
+2026-05-10 03:18:38 [Corp] DarthMiner: anyone have a cyno? 31
+2026-05-10 03:19:13 [Corp] PirateLeech: need logi for fleet tonight 86
+2026-05-10 03:19:49 [Corp] Hannibal Smith: I can bring my Sabre 95
+2026-05-10 03:20:25 [Corp] EveL0ver: Anybody have a spare mining crystal II?
+2026-05-10 03:20:56 [Corp] JitaJitaJita: we need more bombers for tonight's op
+2026-05-10 03:21:39 [Corp] Sascha Tagger: who has a spare probe launcher? 62
+2026-05-10 03:22:08 [Corp] Mike Azariah: any miner want to join fleet? Porpoise boost
+2026-05-10 03:22:49 [Corp] Bob Vance: keep D-scan spam, they may have a hunter
+2026-05-10 03:23:26 [Corp] Sascha Tagger: abyssal T6 run, need 1 more 79
+2026-05-10 03:24:04 [Corp] Nova Fox: fleet op successful, thanks everyone
+2026-05-10 03:24:35 [Corp] JitaJitaJita: C5 wormhole open from Jita, mapping now
+2026-05-10 03:25:13 [Corp] Quinn Ragner: I just lost my Astero, sad day
+2026-05-10 03:25:45 [Corp] Ivan Drago: I'm tackled in Amamake, need help!
+2026-05-10 03:26:23 [Corp] GuristasSpy: FC what do we do now?
+2026-05-10 03:27:03 [Corp] Alice Winters: I can light one, wait at the sun
+2026-05-10 03:27:34 [Corp] DarthMiner: anyone have a cyno?
+2026-05-10 03:28:14 [Corp] GuristasSpy: keep D-scan spam, they may have a hunter
+2026-05-10 03:28:52 [Corp] Odin Valhalla: any miner want to join fleet? Porpoise boost
+2026-05-10 03:29:26 [Corp] Ivan Drago: that was a nice kill, check zkill
+2026-05-10 03:29:55 [Corp] Raven Starlight: keep D-scan spam, they may have a hunter 19
+2026-05-10 03:30:37 [Corp] Logi4Life: I can light one, wait at the sun
+2026-05-10 03:31:08 [Corp] PirateLeech: who has a spare probe launcher?
+2026-05-10 03:31:50 [Corp] DarthMiner: any miner want to join fleet? Porpoise boost
+2026-05-10 03:32:28 [Corp] KillmarkCollector: I can light one, wait at the sun
+2026-05-10 03:32:56 [Corp] Quinn Ragner: abyssal T6 run, need 1 more
+2026-05-10 03:33:39 [Corp] Logi4Life: anyone have a cyno?
+2026-05-10 03:34:16 [Corp] Sascha Tagger: need logi for fleet tonight 72
+2026-05-10 03:34:51 [Corp] GuristasSpy: anyone have a cyno?
+2026-05-10 03:35:20 [Corp] Vladimir Taltos: abyssal T6 run, need 1 more
+2026-05-10 03:36:03 [Corp] KillmarkCollector: C5 wormhole open from Jita, mapping now
+2026-05-10 03:36:32 [Corp] Nova Fox: I can bring my Sabre
+2026-05-10 03:37:14 [Corp] EveL0ver: abyssal T6 run, need 1 more
+2026-05-10 03:37:46 [Corp] Odin Valhalla: Anybody have a spare mining crystal II?
+2026-05-10 03:38:21 [Corp] Celestia Vega: keep D-scan spam, they may have a hunter
+2026-05-10 03:39:01 [Corp] Hannibal Smith: keep D-scan spam, they may have a hunter 94
+2026-05-10 03:39:37 [Corp] Sascha Tagger: anyone have a cyno?
+2026-05-10 03:40:13 [Corp] GuristasSpy: anyone have a cyno? 89
+2026-05-10 03:40:44 [Corp] Mike Azariah: we need more bombers for tonight's op
+2026-05-10 03:41:24 [Corp] Hannibal Smith: anyone have a cyno?
+2026-05-10 03:42:02 [Corp] FleetAdmiral: I can bring my Sabre
+2026-05-10 03:42:36 [Corp] Raven Starlight: I can bring my Sabre 26
+2026-05-10 03:43:07 [Corp] KillmarkCollector: I'm tackled in Amamake, need help! 10
+2026-05-10 03:43:45 [Corp] Raven Starlight: I just lost my Astero, sad day
+2026-05-10 03:44:27 [Corp] Celestia Vega: I'm tackled in Amamake, need help!
+2026-05-10 03:44:58 [Corp] Raven Starlight: I can light one, wait at the sun
+2026-05-10 03:45:38 [Corp] EveL0ver: we need more bombers for tonight's op
+2026-05-10 03:46:12 [Corp] Alice Winters: Anybody have a spare mining crystal II? 37
+2026-05-10 03:46:44 [Corp] KillmarkCollector: C5 wormhole open from Jita, mapping now 19
+2026-05-10 03:47:23 [Corp] Bob Vance: I just lost my Astero, sad day
+2026-05-10 03:48:01 [Corp] Sascha Tagger: that was a nice kill, check zkill 90
+2026-05-10 03:48:31 [Corp] Ivan Drago: C5 wormhole open from Jita, mapping now
+2026-05-10 03:49:15 [Corp] Vladimir Taltos: any miner want to join fleet? Porpoise boost
+2026-05-10 03:49:44 [Corp] FleetAdmiral: any miner want to join fleet? Porpoise boost
+2026-05-10 03:50:23 [Corp] Ivan Drago: I'm tackled in Amamake, need help! 19
+2026-05-10 03:51:00 [Corp] GuristasSpy: that was a nice kill, check zkill
+2026-05-10 03:51:32 [Corp] Quinn Ragner: fleet op successful, thanks everyone
+2026-05-10 03:52:13 [Corp] Odin Valhalla: C5 wormhole open from Jita, mapping now
+2026-05-10 03:52:47 [Corp] Sascha Tagger: abyssal T6 run, need 1 more 30
+2026-05-10 03:53:21 [Corp] Bob Vance: I just lost my Astero, sad day
+2026-05-10 03:54:00 [Corp] Nova Fox: I'm tackled in Amamake, need help!
+2026-05-10 03:54:33 [Corp] FleetAdmiral: I can bring my Sabre
+2026-05-10 03:55:10 [Corp] JitaJitaJita: FC what do we do now?
+2026-05-10 03:55:47 [Corp] KillmarkCollector: C5 wormhole open from Jita, mapping now
+2026-05-10 03:56:22 [Corp] Logi4Life: abyssal T6 run, need 1 more
+2026-05-10 03:56:55 [Corp] Celestia Vega: fleet op successful, thanks everyone
+2026-05-10 03:57:32 [Corp] Odin Valhalla: abyssal T6 run, need 1 more 84
+2026-05-10 03:58:10 [Corp] Celestia Vega: I just lost my Astero, sad day
+2026-05-10 03:58:52 [Corp] PirateLeech: need logi for fleet tonight
+2026-05-10 03:59:25 [Corp] JitaJitaJita: I'm tackled in Amamake, need help!
