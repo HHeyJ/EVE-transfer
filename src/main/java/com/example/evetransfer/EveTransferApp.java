@@ -2,9 +2,8 @@ package com.example.evetransfer;
 
 import com.example.evetransfer.log.LogDirectoryMonitor;
 import com.example.evetransfer.log.LogIngestionService;
-import com.example.evetransfer.model.ChatMessage;
 import com.example.evetransfer.translation.QueuedTranslationService;
-import com.example.evetransfer.translation.StubTranslationService;
+import com.example.evetransfer.translation.OllamaTranslationService;
 import com.example.evetransfer.translation.TranslationService;
 import com.example.evetransfer.ui.OverlayController;
 import javafx.application.Application;
@@ -13,6 +12,8 @@ import javafx.stage.Stage;
 
 import java.io.IOException;
 import java.nio.file.*;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 程序入口。JavaFX 的 Application 类比做网页里的 "根组件"，
@@ -35,8 +36,8 @@ public class EveTransferApp extends Application {
         // 1. 创建悬浮窗（置顶、透明、可拖动）
         OverlayController overlay = new OverlayController();
 
-        // 2. 创建翻译服务（目前是占位实现，之后换成你的本地大模型接口）
-        TranslationService translator = new StubTranslationService();
+        // 2. 创建翻译服务（调用本地 Ollama 大模型）
+        TranslationService translator = new OllamaTranslationService();
 
         // 3. 用队列包装翻译服务，防止一次性发送太多请求压垮接口
         //    onTranslated 回调：翻译完成后刷新 UI 对应的那一行
@@ -54,18 +55,22 @@ public class EveTransferApp extends Application {
         Path logDir = Paths.get(logDirArg).toAbsolutePath().normalize();
         System.out.println("监控日志目录: " + logDir);
 
-        // 6. 启动前先手动扫描目录，每个文件只加载最近 20 条消息
-        //    防止启动时把所有历史日志全部塞进 UI。
+        // 6. 启动前先手动扫描目录，
+        //    先把所有文件全部读一遍，按频道分组后每个频道只保留最近 20 条，
+        //    统一送入翻译队列。防止启动时一次性把所有历史日志全部塞进 UI。
+        List<Path> initialFiles = new ArrayList<>();
         if (Files.exists(logDir)) {
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(logDir, "*.txt")) {
                 for (Path path : stream) {
                     ingestionService.registerFile(path);
-                    ingestionService.handleInitialFile(path, 20);
+                    initialFiles.add(path);
                 }
             } catch (IOException e) {
                 System.err.println("初始扫描失败: " + e.getMessage());
             }
         }
+        // 一次性处理所有历史文件，每个频道最多保留 20 条
+        ingestionService.handleInitialScan(initialFiles, 20);
 
         // 7. 启动实时监控（WatchService + 轮询），后续新内容全部读取
         monitor = new LogDirectoryMonitor(logDir, path -> {

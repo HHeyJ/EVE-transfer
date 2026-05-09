@@ -5,10 +5,10 @@ import com.example.evetransfer.model.LogFileState;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * 日志摄取服务：协调"读取文件 → 解析行 → 产生消息"的流水线。
@@ -36,37 +36,70 @@ public class LogIngestionService {
     }
 
     /**
-     * 文件发生变化时调用：增量读取新内容，逐行解析，把有效消息推给 consumer。
+     * 启动时的批量初始扫描。
      *
-     * @param path 发生变化的文件
+     * 逻辑：先把所有文件全部读一遍，解析出所有消息，
+     * 然后按频道分组，每个频道只保留时间最近的 limitPerChannel 条，
+     * 最后按时间顺序统一推给 consumer。
+     *
+     * 这样即使某个频道有 10 个历史文件，也只会翻译 20 条，而不是 10×20 条。
+     *
+     * @param paths           要扫描的文件列表
+     * @param limitPerChannel 每个频道保留的最大消息数
      */
-    /**
-     * 启动时的初始读取：只保留每个文件最后 limit 条消息，
-     * 防止应用启动时一次性把所有历史日志全部塞进 UI。
-     */
-    public void handleInitialFile(Path path, int limit) {
-        final LogFileState state = fileStates.computeIfAbsent(path, LogFileState::new);
+    public void handleInitialScan(List<Path> paths, int limitPerChannel) {
+        List<ChatMessage> allMessages = new ArrayList<>();
 
-        try {
-            List<String> lines = reader.readNewLines(path, state);
-            if (lines.isEmpty()) return;
-
-            System.out.println("[ingest] 初始读取 " + path.getFileName() + " 共 " + lines.size() + " 行，保留最后 " + limit + " 条");
-
-            // 只取最后 limit 行
-            int fromIndex = Math.max(0, lines.size() - limit);
-            List<String> recentLines = lines.subList(fromIndex, lines.size());
-
-            for (String line : recentLines) {
-                parser.parseLine(line).ifPresent(msg -> {
-                    if (state.getChannelName() == null) {
-                        state.setChannelName(msg.getChannel());
-                    }
-                    messageConsumer.accept(msg);
-                });
+        // 第一步：读取所有文件，解析出全部消息（不推给 consumer，先收集）
+        for (Path path : paths) {
+            final LogFileState state = fileStates.computeIfAbsent(path, LogFileState::new);
+            try {
+                List<String> lines = reader.readNewLines(path, state);
+                if (!lines.isEmpty()) {
+                    System.out.println("[ingest] 初始扫描 " + path.getFileName() + " -> " + lines.size() + " 行");
+                }
+                for (String line : lines) {
+                    parser.parseLine(line).ifPresent(msg -> {
+                        if (state.getChannelName() == null) {
+                            state.setChannelName(msg.getChannel());
+                        }
+                        allMessages.add(msg);
+                    });
+                }
+            } catch (IOException e) {
+                System.err.println("[ingest] 初始扫描失败 " + path + ": " + e.getMessage());
             }
-        } catch (IOException e) {
-            System.err.println("[ingest] 初始读取失败 " + path + ": " + e.getMessage());
+        }
+
+        if (allMessages.isEmpty()) {
+            System.out.println("[ingest] 初始扫描未读到任何消息");
+            return;
+        }
+
+        // 第二步：按频道分组，每个频道按时间排序，只保留最近的 limitPerChannel 条
+        Map<String, List<ChatMessage>> byChannel = allMessages.stream()
+                .collect(Collectors.groupingBy(ChatMessage::getChannel));
+
+        List<ChatMessage> toKeep = new ArrayList<>();
+        for (Map.Entry<String, List<ChatMessage>> entry : byChannel.entrySet()) {
+            List<ChatMessage> list = entry.getValue();
+            // 按时间戳排序，时间相同按 id 排序（id 是自增的，保证稳定）
+            list.sort(Comparator.comparing(ChatMessage::getTimestamp)
+                    .thenComparingLong(ChatMessage::getId));
+            // 取最后 limitPerChannel 条
+            int fromIndex = Math.max(0, list.size() - limitPerChannel);
+            toKeep.addAll(list.subList(fromIndex, list.size()));
+        }
+
+        // 第三步：把所有保留的消息再按时间顺序统一发送给 consumer
+        toKeep.sort(Comparator.comparing(ChatMessage::getTimestamp)
+                .thenComparingLong(ChatMessage::getId));
+
+        System.out.println("[ingest] 初始扫描完成，共 " + allMessages.size()
+                + " 条消息，保留 " + toKeep.size() + " 条送入翻译队列");
+
+        for (ChatMessage msg : toKeep) {
+            messageConsumer.accept(msg);
         }
     }
 
