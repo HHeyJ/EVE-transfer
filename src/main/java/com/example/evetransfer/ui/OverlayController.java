@@ -44,7 +44,7 @@ public class OverlayController {
     // 类比 web：相当于 computed(() => messages.filter(m => activeChannels.includes(m.channel)))
     private final FilteredList<ChatMessage> filteredMessages = new FilteredList<>(messages);
 
-    private final HBox channelFilterBar = new HBox(6);
+    private final FlowPane channelFilterBar = new FlowPane(6, 4);
     private final Set<String> activeChannels = ConcurrentHashMap.newKeySet();
     private final Set<String> knownChannels = ConcurrentHashMap.newKeySet();
 
@@ -101,6 +101,10 @@ public class OverlayController {
         messageList.setFocusTraversable(false);
         messageList.getStyleClass().add("message-list");
         messageList.setStyle("-fx-background-color: transparent; -fx-padding: 0 0 4 0;");
+        // fixedCellSize = -1 表示每行高度根据内容自适应（wrapText 才能正确换行撑开高度）
+        messageList.setFixedCellSize(-1);
+        // 当 ListView 宽度变化时，文本换行会导致每行高度变化，必须刷新列表重新计算
+        messageList.widthProperty().addListener((obs, oldW, newW) -> messageList.refresh());
         VBox.setVgrow(messageList, Priority.ALWAYS);
 
         StackPane centerPane = new StackPane(messageList);
@@ -114,14 +118,12 @@ public class OverlayController {
 
         HBox bottomRow = new HBox(8);
         bottomRow.setAlignment(Pos.CENTER_LEFT);
-        channelFilterBar.setAlignment(Pos.CENTER_LEFT);
+        // FlowPane 会占满剩余宽度，当按钮放不下时自动换到下一行
+        channelFilterBar.setPrefWrapLength(0);
         HBox.setHgrow(channelFilterBar, Priority.ALWAYS);
 
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-
         StackPane resizeHandle = createResizeHandle();
-        bottomRow.getChildren().addAll(channelFilterBar, spacer, resizeHandle);
+        bottomRow.getChildren().addAll(channelFilterBar, resizeHandle);
         bottomBox.getChildren().add(bottomRow);
         root.setBottom(bottomBox);
     }

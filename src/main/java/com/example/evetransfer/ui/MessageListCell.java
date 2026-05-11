@@ -65,15 +65,23 @@ public class MessageListCell extends ListCell<ChatMessage> {
         header.getChildren().addAll(channelBadge, playerLabel, timeLabel);
 
         // 翻译结果：白色大字体
-        translatedLabel.setStyle("-fx-font-size: 13px; -fx-text-fill: #f1f2f6; -fx-wrap-text: true;");
+        // 关键：maxWidth 绑定到父容器宽度，wrapText 才能在窗口缩小时自动换行
+        translatedLabel.setStyle("-fx-font-size: 13px; -fx-text-fill: #f1f2f6;");
         translatedLabel.setWrapText(true);
+        translatedLabel.setMaxWidth(Double.MAX_VALUE); // 允许占满可用宽度
 
         // 原文：灰色小字体
-        originalLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #7a7a8a; -fx-wrap-text: true;");
+        originalLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #7a7a8a;");
         originalLabel.setWrapText(true);
+        originalLabel.setMaxWidth(Double.MAX_VALUE);
 
         container.getChildren().addAll(header, translatedLabel, originalLabel);
         VBox.setVgrow(translatedLabel, Priority.ALWAYS);
+
+        // 让两个文本 Label 的宽度跟随 container 宽度（container 宽度跟随 ListCell 宽度）
+        // 这样当窗口缩小、ListCell 变窄时，文本会自动换行而不是溢出
+        translatedLabel.prefWidthProperty().bind(container.widthProperty().subtract(24));
+        originalLabel.prefWidthProperty().bind(container.widthProperty().subtract(24));
     }
 
     /**
