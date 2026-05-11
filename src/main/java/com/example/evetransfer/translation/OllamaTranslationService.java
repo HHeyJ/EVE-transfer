@@ -35,6 +35,11 @@ public class OllamaTranslationService implements TranslationService {
 
     @Override
     public CompletableFuture<String> translate(String text, String targetLanguage) {
+        // 如果原文已经是中文，直接返回原文，不走翻译接口
+        if (containsChinese(text)) {
+            return CompletableFuture.completedFuture(text);
+        }
+
         // 把 zh/en/ja 等语言代码映射成人类可读的语言名，拼进 prompt
         String langName = mapLanguage(targetLanguage);
 
@@ -69,6 +74,20 @@ public class OllamaTranslationService implements TranslationService {
                     return "[无翻译结果]";
                 })
                 .exceptionally(ex -> "[翻译异常: " + ex.getMessage() + "]");
+    }
+
+    /**
+     * 检测文本是否包含中文字符（CJK 统一表意文字）。
+     * 如果原文已经是中文，就不需要再翻译了。
+     */
+    private boolean containsChinese(String text) {
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c >= '\u4E00' && c <= '\u9FA5') {
+                return true;
+            }
+        }
+        return false;
     }
 
     // 语言代码 -> 语言名，拼进 prompt
