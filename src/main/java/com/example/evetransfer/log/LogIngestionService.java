@@ -59,12 +59,7 @@ public class LogIngestionService {
                     System.out.println("[ingest] 初始扫描 " + path.getFileName() + " -> " + lines.size() + " 行");
                 }
                 for (String line : lines) {
-                    parser.parseLine(line).ifPresent(msg -> {
-                        if (state.getChannelName() == null) {
-                            state.setChannelName(msg.getChannel());
-                        }
-                        allMessages.add(msg);
-                    });
+                    parser.parseLine(line, state).ifPresent(allMessages::add);
                 }
             } catch (IOException e) {
                 System.err.println("[ingest] 初始扫描失败 " + path + ": " + e.getMessage());
@@ -115,12 +110,10 @@ public class LogIngestionService {
                 System.out.println("[ingest] " + path.getFileName() + " -> " + lines.size() + " 行新内容");
             }
             for (String line : lines) {
-                parser.parseLine(line).ifPresentOrElse(msg -> {
-                    if (state.getChannelName() == null) {
-                        state.setChannelName(msg.getChannel());
-                    }
-                    messageConsumer.accept(msg);
-                }, () -> System.out.println("[ingest] 解析失败: " + line.substring(0, Math.min(60, line.length()))));
+                parser.parseLine(line, state).ifPresentOrElse(
+                    messageConsumer::accept,
+                    () -> System.out.println("[ingest] 解析失败: " + line.substring(0, Math.min(60, line.length())))
+                );
             }
         } catch (IOException e) {
             System.err.println("[ingest] 读取失败 " + path + ": " + e.getMessage());

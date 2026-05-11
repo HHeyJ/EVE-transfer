@@ -62,15 +62,63 @@ public class LogReader {
             int textOffset = hasBom ? 2 : 0;
             String text = new String(buffer, textOffset, buffer.length - textOffset, charset);
 
-            // 按行分割（\r\n 或 \n）
-            String[] rawLines = text.split("\\r?\\n");
-            for (String line : rawLines) {
-                if (!line.isEmpty()) {
-                    lines.add(line);
+            // 如果是第一次读取（startPos == 0），需要解析文件头，跳过元数据
+            if (startPos == 0) {
+                lines = extractBodyLines(text, state);
+            } else {
+                // 增量读取：直接按行分割
+                String[] rawLines = text.split("\r?\n");
+                for (String line : rawLines) {
+                    if (!line.isEmpty()) {
+                        lines.add(line);
+                    }
                 }
             }
         }
 
         return lines;
+    }
+
+    /**
+     * 从完整文件内容中提取正文消息行，同时解析文件头里的 Channel Name。
+     *
+     * EVE 日志文件结构：
+     * 1. 文件头元数据（Channel ID, Channel Name, Listener, Session started）
+     * 2. 用 "---------------" 分隔
+     * 3. 正文：每行以 "[ yyyy.MM.dd HH:mm:ss ]" 开头
+     *
+     * 我们只保留第 3 部分的行，同时从第 1 部分提取 Channel Name。
+     */
+    private List<String> extractBodyLines(String text, LogFileState state) {
+        List<String> result = new ArrayList<>();
+        String[] rawLines = text.split("\r?\n");
+        boolean inBody = false;
+
+        for (String rawLine : rawLines) {
+            // 去掉首尾空白，同时去掉可能残留的 BOM 字符（\uFEFF）
+            String line = rawLine.strip().replace("\uFEFF", "");
+            if (line.isEmpty()) {
+                continue;
+            }
+
+            // 从文件头提取频道名
+            if (line.startsWith("Channel Name:")) {
+                String channel = line.substring("Channel Name:".length()).trim();
+                state.setChannelName(channel);
+                continue;
+            }
+
+            // 检测正文开始：以 "[" 开头且包含时间格式的行
+            // 例如：[ 2026.05.10 09:32:07 ]
+            if (!inBody && line.startsWith("[")) {
+                inBody = true;
+            }
+
+            if (inBody) {
+                result.add(line);
+            }
+        }
+
+        return result;
     }
 }
