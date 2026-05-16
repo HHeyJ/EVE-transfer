@@ -58,11 +58,12 @@ public class LogDirectoryMonitor implements AutoCloseable {
             Files.createDirectories(logDir);
         }
 
-        // 第一步：初始扫描
+        // 第一步：初始扫描，只记录已有文件大小（不触发回调）。
+        // 初始消息消费由 LogIngestionService.handleInitialScan 单独控制，
+        // 避免启动时重复读取所有文件。
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(logDir, "*.txt")) {
             for (Path path : stream) {
                 trackFile(path);
-                onModified.accept(path);
             }
         }
 
@@ -135,9 +136,14 @@ public class LogDirectoryMonitor implements AutoCloseable {
                     Path fullPath = logDir.resolve(filename);
 
                     if (kind == ENTRY_CREATE) {
-                        System.out.println("[watch] 新文件: " + fullPath);
-                        trackFile(fullPath);
-                        onModified.accept(fullPath);
+                        // pollDirectory 可能已经先发现并处理了，避免重复触发
+                        if (trackedFileSizes.containsKey(fullPath)) {
+                            trackFile(fullPath); // 只更新大小，不触发回调
+                        } else {
+                            System.out.println("[watch] 新文件: " + fullPath);
+                            trackFile(fullPath);
+                            onModified.accept(fullPath);
+                        }
                     } else if (kind == ENTRY_MODIFY) {
                         if (!trackedFileSizes.containsKey(fullPath)) {
                             System.out.println("[watch] 未跟踪的文件被修改: " + fullPath);

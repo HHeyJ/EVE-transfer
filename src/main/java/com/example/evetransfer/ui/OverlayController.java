@@ -62,6 +62,8 @@ public class OverlayController {
     private double resizeStartWidth;
     private double resizeStartHeight;
 
+    private Runnable onChannelSelectRequested;
+
     public OverlayController() {
         this.stage = OverlayStageFactory.create(root, 420, 520);
         setupUI();
@@ -146,6 +148,26 @@ public class OverlayController {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
+        // 频道选择按钮
+        Button channelSelectBtn = new Button("⚙");
+        channelSelectBtn.setStyle(
+                "-fx-background-color: transparent; -fx-text-fill: #a0a0b0; -fx-font-size: 13px; " +
+                "-fx-padding: 0 4 0 4; -fx-cursor: hand;"
+        );
+        channelSelectBtn.setOnMouseEntered(e -> channelSelectBtn.setStyle(
+                "-fx-background-color: transparent; -fx-text-fill: #00d2ff; -fx-font-size: 13px; " +
+                "-fx-padding: 0 4 0 4; -fx-cursor: hand;"
+        ));
+        channelSelectBtn.setOnMouseExited(e -> channelSelectBtn.setStyle(
+                "-fx-background-color: transparent; -fx-text-fill: #a0a0b0; -fx-font-size: 13px; " +
+                "-fx-padding: 0 4 0 4; -fx-cursor: hand;"
+        ));
+        channelSelectBtn.setOnAction(e -> {
+            if (onChannelSelectRequested != null) {
+                onChannelSelectRequested.run();
+            }
+        });
+
         // 原文显示开关。ToggleButton = 可切换状态的按钮，类似 checkbox。
         ToggleButton originalToggle = new ToggleButton("原文");
         originalToggle.setSelected(true);
@@ -178,7 +200,7 @@ public class OverlayController {
         opacitySlider.valueProperty().addListener((obs, oldVal, newVal) ->
                 stage.setOpacity(newVal.doubleValue()));
 
-        // 关闭按钮（只是隐藏窗口，不是退出程序）
+        // 关闭按钮：彻底退出程序
         Button closeBtn = new Button("×");
         closeBtn.setStyle(
                 "-fx-background-color: transparent; -fx-text-fill: #a0a0b0; " +
@@ -192,9 +214,9 @@ public class OverlayController {
                 "-fx-background-color: transparent; -fx-text-fill: #a0a0b0; " +
                 "-fx-font-size: 16px; -fx-padding: 0 4 0 4; -fx-cursor: hand;"
         ));
-        closeBtn.setOnAction(e -> stage.hide());
+        closeBtn.setOnAction(e -> Platform.exit());
 
-        header.getChildren().addAll(dot, title, spacer, originalToggle, opacitySlider, closeBtn);
+        header.getChildren().addAll(dot, title, channelSelectBtn, spacer, originalToggle, opacitySlider, closeBtn);
 
         // 拖动支持：在标题栏按下鼠标时记录位置，拖动时更新窗口坐标
         header.setOnMousePressed(this::onMousePressed);
@@ -373,6 +395,10 @@ public class OverlayController {
 
     public Stage getStage() {
         return stage;
+    }
+
+    public void setOnChannelSelectRequested(Runnable callback) {
+        this.onChannelSelectRequested = callback;
     }
 
     public void show() {

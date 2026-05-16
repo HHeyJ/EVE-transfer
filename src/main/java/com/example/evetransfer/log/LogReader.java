@@ -80,6 +80,44 @@ public class LogReader {
     }
 
     /**
+     * 只读取文件头（前 2KB），提取 Channel Name，不更新读取位置。
+     * 用于启动时发现所有可用频道，不做实际消息消费。
+     */
+    public String peekChannelName(Path path, LogFileState state) throws IOException {
+        try (RandomAccessFile raf = new RandomAccessFile(path.toFile(), "r")) {
+            long fileLength = raf.length();
+            if (fileLength == 0) {
+                return null;
+            }
+            // 只读前 2KB，足够覆盖文件头
+            int bytesToRead = (int) Math.min(fileLength, 2048);
+            byte[] buffer = new byte[bytesToRead];
+            raf.readFully(buffer);
+
+            // 检测编码
+            boolean hasBom = buffer.length >= 2
+                    && buffer[0] == UTF16LE_BOM[0] && buffer[1] == UTF16LE_BOM[1];
+            Charset charset = hasBom ? StandardCharsets.UTF_16LE
+                    : (state.getCharset() != null ? state.getCharset() : StandardCharsets.UTF_8);
+            state.setCharset(charset);
+
+            int textOffset = hasBom ? 2 : 0;
+            String text = new String(buffer, textOffset, buffer.length - textOffset, charset);
+
+            // 从文件头提取频道名
+            for (String rawLine : text.split("\r?\n")) {
+                String line = rawLine.strip().replace("\uFEFF", "");
+                if (line.startsWith("Channel Name:")) {
+                    String channel = line.substring("Channel Name:".length()).trim();
+                    state.setChannelName(channel);
+                    return channel;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
      * 从完整文件内容中提取正文消息行，同时解析文件头里的 Channel Name。
      *
      * EVE 日志文件结构：

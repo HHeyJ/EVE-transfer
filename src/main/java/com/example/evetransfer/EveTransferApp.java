@@ -5,6 +5,7 @@ import com.example.evetransfer.log.LogIngestionService;
 import com.example.evetransfer.translation.QueuedTranslationService;
 import com.example.evetransfer.translation.OllamaTranslationService;
 import com.example.evetransfer.translation.TranslationService;
+import com.example.evetransfer.ui.ChannelSelectionDialog;
 import com.example.evetransfer.ui.OverlayController;
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -13,7 +14,10 @@ import javafx.stage.Stage;
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 程序入口。JavaFX 的 Application 类比做网页里的 "根组件"，
@@ -21,61 +25,83 @@ import java.util.List;
  */
 public class EveTransferApp extends Application {
 
-    // 这三个对象需要在窗口关闭时手动释放资源，所以声明为成员变量
-    private LogDirectoryMonitor monitor;           // 监控日志目录变化的"观察者"
-    private QueuedTranslationService translationService; // 翻译队列
-    private LogIngestionService ingestionService;  // 日志读取与解析
+    private LogDirectoryMonitor monitor;
+    private QueuedTranslationService translationService;
+    private LogIngestionService ingestionService;
+    private Path logDir;
+    private int initialLimitPerChannel = 5; // 运行时首次读取新文件的限流条数（0 表示不限流）
 
-    /**
-     * JavaFX 启动后自动调用的方法，相当于网页的初始化逻辑。
-     * primaryStage 是 JavaFX 自动创建的第一个窗口，我们这里不用它，
-     * 而是自己创建了一个悬浮窗口（OverlayController）。
-     */
     @Override
     public void start(Stage primaryStage) {
-        // 1. 创建悬浮窗（置顶、透明、可拖动）
+        // 禁止 JavaFX 自动退出（否则 primaryStage.hide() 会导致整个应用退出）
+        Platform.setImplicitExit(false);
+
+        // 1. 创建悬浮窗
         OverlayController overlay = new OverlayController();
+        overlay.setOnChannelSelectRequested(() -> openChannelSelector(overlay));
 
-        // 2. 创建翻译服务（调用本地 Ollama 大模型）
+        // 2. 翻译服务
         TranslationService translator = new OllamaTranslationService();
-
-        // 3. 用队列包装翻译服务，防止一次性发送太多请求压垮接口
-        //    onTranslated 回调：翻译完成后刷新 UI 对应的那一行
         translationService = new QueuedTranslationService(translator, overlay::refreshMessage);
 
-        // 4. 日志解析服务：读到新消息后，
-        //    先加到 UI 列表，再送进翻译队列
+        // 3. 日志解析服务
         ingestionService = new LogIngestionService(msg -> {
-            overlay.addMessage(msg);        // 立刻显示原文
-            translationService.offer(msg);  // 排队等待翻译
+            overlay.addMessage(msg);
+            translationService.offer(msg);
         });
+        ingestionService.setInitialLimitPerChannel(initialLimitPerChannel);
 
-        // 5. 从命令行参数读取日志目录，默认用项目里的 logs/ 文件夹
+        // 4. 日志目录
         String logDirArg = getParameters().getRaw().stream().findFirst().orElse("./logs");
-        Path logDir = Paths.get(logDirArg).toAbsolutePath().normalize();
+        logDir = Paths.get(logDirArg).toAbsolutePath().normalize();
         System.out.println("监控日志目录: " + logDir);
 
-        // 6. 启动前先手动扫描目录，
-        //    先把所有文件全部读一遍，按频道分组后每个频道只保留最近 20 条，
-        //    统一送入翻译队列。防止启动时一次性把所有历史日志全部塞进 UI。
-        List<Path> initialFiles = new ArrayList<>();
+        // 5. 扫描目录，收集所有文件
+        List<Path> allFiles = new ArrayList<>();
         if (Files.exists(logDir)) {
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(logDir, "*.txt")) {
                 for (Path path : stream) {
-                    ingestionService.registerFile(path);
-                    initialFiles.add(path);
+                    allFiles.add(path);
                 }
             } catch (IOException e) {
-                System.err.println("初始扫描失败: " + e.getMessage());
+                System.err.println("目录扫描失败: " + e.getMessage());
             }
         }
-        // 一次性处理所有历史文件，每个频道最多保留 20 条
-        ingestionService.handleInitialScan(initialFiles, 5);
 
-        // 7. 启动实时监控（WatchService + 轮询），后续新内容全部读取
+        // 6. 快速发现所有频道名（只读文件头，不消费消息）
+        Set<String> allChannels = ingestionService.discoverChannels(allFiles);
+        System.out.println("发现频道: " + allChannels);
+
+        // 7. 弹出频道选择对话框
+        Set<String> selectedChannels;
+        if (allChannels.isEmpty()) {
+            selectedChannels = new HashSet<>();
+        } else {
+            Set<String> result = ChannelSelectionDialog.showAndWait(allChannels, allChannels);
+            if (result == null) {
+                // 用户取消了，直接退出程序
+                Platform.exit();
+                return;
+            }
+            selectedChannels = result;
+            System.out.println("用户选择监听: " + selectedChannels);
+        }
+        ingestionService.setMonitoredChannels(selectedChannels);
+
+        // 8. 初始扫描：只加载选中频道的历史消息
+        List<Path> selectedFiles = allFiles.stream()
+                .filter(p -> {
+                    var state = ingestionService.getFileState(p);
+                    return state != null && state.getChannelName() != null
+                            && selectedChannels.contains(state.getChannelName());
+                })
+                .collect(Collectors.toList());
+        ingestionService.handleInitialScan(selectedFiles, initialLimitPerChannel);
+
+        // 9. 启动实时监控（所有文件都进入监控，但摄取服务内部会过滤）
         monitor = new LogDirectoryMonitor(logDir, path -> {
-            ingestionService.registerFile(path);     // 登记文件
-            ingestionService.handleFileChange(path); // 读取新增内容
+            ingestionService.registerFile(path);
+            ingestionService.handleFileChange(path);
         });
 
         try {
@@ -85,21 +111,39 @@ public class EveTransferApp extends Application {
             e.printStackTrace();
         }
 
-        // 7. 显示悬浮窗
+        // 10. 显示悬浮窗
         overlay.show();
 
-        // 8. 把 JavaFX 自带的 primaryStage "藏"掉，只显示我们的悬浮窗
-        primaryStage.setOpacity(0);
-        primaryStage.setWidth(1);
-        primaryStage.setHeight(1);
-        primaryStage.show();
-        primaryStage.hide();
+        // primaryStage 是 JavaFX 自动创建的主舞台，我们不需要显示它。
+        // 悬浮窗 overlay 是唯一可见窗口。关闭按钮会调用 Platform.exit() 真正退出。
     }
 
     /**
-     * 窗口关闭时调用，类似网页的 beforeunload。
-     * 用来关闭文件监控和翻译线程，防止内存泄漏。
+     * 运行时重新打开频道选择对话框。
      */
+    private void openChannelSelector(OverlayController overlay) {
+        List<Path> allFiles = new ArrayList<>();
+        if (Files.exists(logDir)) {
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(logDir, "*.txt")) {
+                for (Path path : stream) {
+                    allFiles.add(path);
+                }
+            } catch (IOException e) {
+                System.err.println("目录扫描失败: " + e.getMessage());
+            }
+        }
+
+        Set<String> allChannels = ingestionService.discoverChannels(allFiles);
+        Set<String> currentlySelected = ingestionService.getMonitoredChannels();
+        Set<String> newSelection = ChannelSelectionDialog.showAndWait(allChannels, currentlySelected);
+
+        // null 表示用户取消了，不做任何操作；空集合表示用户确定但清空了所有选择
+        if (newSelection != null) {
+            ingestionService.setMonitoredChannels(newSelection);
+            System.out.println("更新监听频道: " + newSelection);
+        }
+    }
+
     @Override
     public void stop() {
         if (monitor != null) {
@@ -108,10 +152,10 @@ public class EveTransferApp extends Application {
         if (translationService != null) {
             translationService.close();
         }
-        Platform.exit(); // 彻底结束 JavaFX 程序
+        Platform.exit();
     }
 
     public static void main(String[] args) {
-        launch(args); // JavaFX 程序的标准入口
+        launch(args);
     }
 }
