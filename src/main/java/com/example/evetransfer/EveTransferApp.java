@@ -70,7 +70,7 @@ public class EveTransferApp extends Application {
             }
         }
         // 一次性处理所有历史文件，每个频道最多保留 20 条
-        ingestionService.handleInitialScan(initialFiles, 20);
+        ingestionService.handleInitialScan(initialFiles, 5);
 
         // 7. 启动实时监控（WatchService + 轮询），后续新内容全部读取
         monitor = new LogDirectoryMonitor(logDir, path -> {

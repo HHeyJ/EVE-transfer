@@ -256,12 +256,12 @@ public class OverlayController {
             int insertIndex = findInsertIndex(message);
             messages.add(insertIndex, message);
 
-            // 2. 每个频道最多保留 20 条（防止内存无限增长）
+            // 2. 每个频道最多保留 50 条（防止内存无限增长）
             String ch = message.getChannel();
             long channelCount = messages.stream()
                     .filter(m -> m.getChannel().equals(ch))
                     .count();
-            if (channelCount > 20) {
+            if (channelCount > 50) {
                 for (int i = 0; i < messages.size(); i++) {
                     if (messages.get(i).getChannel().equals(ch)) {
                         messages.remove(i); // 删掉该频道最早的一条
