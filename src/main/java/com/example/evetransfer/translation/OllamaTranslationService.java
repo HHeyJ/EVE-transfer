@@ -39,6 +39,10 @@ public class OllamaTranslationService implements TranslationService {
         if (containsChinese(text)) {
             return CompletableFuture.completedFuture(text);
         }
+        // 超网不翻译
+        if (isHyperNet(text)) {
+            return CompletableFuture.completedFuture(text);
+        }
 
         // 把 zh/en/ja 等语言代码映射成人类可读的语言名，拼进 prompt
         String langName = mapLanguage(targetLanguage);
@@ -88,6 +92,10 @@ public class OllamaTranslationService implements TranslationService {
             }
         }
         return false;
+    }
+
+    private boolean isHyperNet(String text) {
+        return text.contains("HyperNet offer");
     }
 
     // 语言代码 -> 语言名，拼进 prompt

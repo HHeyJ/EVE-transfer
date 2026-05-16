@@ -3,7 +3,7 @@ package com.example.evetransfer;
 import com.example.evetransfer.log.LogDirectoryMonitor;
 import com.example.evetransfer.log.LogIngestionService;
 import com.example.evetransfer.translation.QueuedTranslationService;
-import com.example.evetransfer.translation.OllamaTranslationService;
+import com.example.evetransfer.translation.DeepSeekTranslationService;
 import com.example.evetransfer.translation.TranslationService;
 import com.example.evetransfer.ui.ChannelSelectionDialog;
 import com.example.evetransfer.ui.OverlayController;
@@ -41,7 +41,7 @@ public class EveTransferApp extends Application {
         overlay.setOnChannelSelectRequested(() -> openChannelSelector(overlay));
 
         // 2. 翻译服务
-        TranslationService translator = new OllamaTranslationService();
+        TranslationService translator = new DeepSeekTranslationService();
         translationService = new QueuedTranslationService(translator, overlay::refreshMessage);
 
         // 3. 日志解析服务
