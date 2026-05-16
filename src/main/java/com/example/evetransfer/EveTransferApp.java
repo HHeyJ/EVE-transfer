@@ -41,8 +41,17 @@ public class EveTransferApp extends Application {
         overlay.setOnChannelSelectRequested(() -> openChannelSelector(overlay));
 
         // 2. 翻译服务
-        TranslationService translator = new DeepSeekTranslationService();
+        DeepSeekTranslationService deepSeekTranslator = new DeepSeekTranslationService();
+        TranslationService translator = deepSeekTranslator;
         translationService = new QueuedTranslationService(translator, overlay::refreshMessage);
+
+        // 设置手动翻译回调（中文 -> 其他语言）
+        overlay.setTranslateCallback((text, langName) -> {
+            String systemPrompt = "你是一个精准翻译器。将以下中文翻译为" + langName +
+                    "，只输出译文，不加任何解释、标点或格式标记。" +
+                    "保留EVE特有名词的英文原文。直接输出译文，严禁输出其他内容。";
+            return deepSeekTranslator.translateCustom(text, systemPrompt);
+        });
 
         // 3. 日志解析服务
         ingestionService = new LogIngestionService(msg -> {

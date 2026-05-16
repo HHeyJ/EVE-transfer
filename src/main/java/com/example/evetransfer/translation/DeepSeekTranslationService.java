@@ -61,13 +61,21 @@ public class DeepSeekTranslationService implements TranslationService {
         if (isHyperNet(text)) {
             return CompletableFuture.completedFuture(text);
         }
+        return doRequest(buildSystemPrompt(), text);
+    }
 
+    /**
+     * 自定义 system prompt 的翻译，用于手动翻译面板（中文 -> 其他语言）。
+     */
+    public CompletableFuture<String> translateCustom(String text, String systemPrompt) {
         if (apiKey == null || apiKey.isBlank()) {
             return CompletableFuture.completedFuture("[未配置 API Key]");
         }
+        return doRequest(systemPrompt, text);
+    }
 
-        String systemPrompt = buildSystemPrompt();
-        String jsonBody = buildRequestBody(systemPrompt, text);
+    private CompletableFuture<String> doRequest(String systemPrompt, String userText) {
+        String jsonBody = buildRequestBody(systemPrompt, userText);
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(API_URL))
@@ -83,8 +91,6 @@ public class DeepSeekTranslationService implements TranslationService {
                     }
                     String body = response.body();
                     Matcher matcher = CONTENT_PATTERN.matcher(body);
-                    // 第一个 content 是 system message（如果有），第二个是 assistant 的回复
-                    // DeepSeek 响应里 choices[0].message.content 就是我们要的
                     String lastContent = null;
                     while (matcher.find()) {
                         lastContent = matcher.group(1);
@@ -111,6 +117,7 @@ public class DeepSeekTranslationService implements TranslationService {
                 + "{\"role\":\"user\",\"content\":\"" + escapeJson(userText) + "\"}"
                 + "],"
                 + "\"stream\":false,"
+                + "\"thinking\":{\"type\": \"disabled\"\n},"
                 + "\"max_tokens\":4096,"
                 + "\"temperature\":1"
                 + "}";

@@ -12,6 +12,8 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Cursor;
 import javafx.scene.control.*;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
@@ -20,7 +22,9 @@ import javafx.scene.shape.SVGPath;
 import javafx.stage.Stage;
 
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiFunction;
 
 /**
  * 悬浮窗口控制器。相当于前端 Vue/React 组件里的 setup() 或组件逻辑。
@@ -63,6 +67,15 @@ public class OverlayController {
     private double resizeStartHeight;
 
     private Runnable onChannelSelectRequested;
+    // 翻译回调：(text, targetLang) -> CompletableFuture<String>
+    private BiFunction<String, String, CompletableFuture<String>> translateCallback;
+
+    // 翻译面板相关组件
+    private VBox translatePanel;
+    private TextArea translateInput;
+    private ComboBox<String> langSelector;
+    private Label translateResult;
+    private Button translateBtn;
 
     public OverlayController() {
         this.stage = OverlayStageFactory.create(root, 420, 520);
@@ -92,9 +105,14 @@ public class OverlayController {
         root.getStyleClass().add("overlay-root");
         root.setStyle("-fx-background-color: rgba(22,22,30,0.92); -fx-background-radius: 16;");
 
-        // 顶部标题栏
+        // 顶部区域：标题栏 + 可折叠翻译面板
+        VBox topBox = new VBox(0);
         HBox header = createHeader();
-        root.setTop(header);
+        translatePanel = createTranslatePanel();
+        translatePanel.setVisible(false);
+        translatePanel.setManaged(false);
+        topBox.getChildren().addAll(header, translatePanel);
+        root.setTop(topBox);
 
         // 中间消息列表
         messageList.setItems(filteredMessages);
@@ -168,6 +186,31 @@ public class OverlayController {
             }
         });
 
+        // 手动翻译按钮（展开/折叠翻译面板）
+        Button translateToggleBtn = new Button("译");
+        translateToggleBtn.setStyle(
+                "-fx-background-color: transparent; -fx-text-fill: #a0a0b0; -fx-font-size: 12px; " +
+                "-fx-padding: 0 6 0 6; -fx-cursor: hand;"
+        );
+        translateToggleBtn.setOnMouseEntered(e -> translateToggleBtn.setStyle(
+                "-fx-background-color: transparent; -fx-text-fill: #00d2ff; -fx-font-size: 12px; " +
+                "-fx-padding: 0 6 0 6; -fx-cursor: hand;"
+        ));
+        translateToggleBtn.setOnMouseExited(e -> translateToggleBtn.setStyle(
+                "-fx-background-color: transparent; -fx-text-fill: #a0a0b0; -fx-font-size: 12px; " +
+                "-fx-padding: 0 6 0 6; -fx-cursor: hand;"
+        ));
+        translateToggleBtn.setOnAction(e -> {
+            boolean visible = !translatePanel.isVisible();
+            translatePanel.setVisible(visible);
+            translatePanel.setManaged(visible);
+            if (visible) {
+                translateInput.clear();
+                translateResult.setText("");
+                translateResult.setVisible(false);
+            }
+        });
+
         // 原文显示开关。ToggleButton = 可切换状态的按钮，类似 checkbox。
         ToggleButton originalToggle = new ToggleButton("原文");
         originalToggle.setSelected(true);
@@ -216,13 +259,144 @@ public class OverlayController {
         ));
         closeBtn.setOnAction(e -> Platform.exit());
 
-        header.getChildren().addAll(dot, title, channelSelectBtn, spacer, originalToggle, opacitySlider, closeBtn);
+        header.getChildren().addAll(dot, title, channelSelectBtn, translateToggleBtn, spacer, originalToggle, opacitySlider, closeBtn);
 
         // 拖动支持：在标题栏按下鼠标时记录位置，拖动时更新窗口坐标
         header.setOnMousePressed(this::onMousePressed);
         header.setOnMouseDragged(this::onMouseDragged);
 
         return header;
+    }
+
+    /**
+     * 创建手动翻译面板。
+     * 包含：输入框、目标语言选择、翻译按钮、结果显示、复制按钮。
+     * 默认折叠，点击标题栏"译"按钮展开/收起。
+     */
+    private VBox createTranslatePanel() {
+        VBox panel = new VBox(8);
+        panel.setPadding(new Insets(10, 14, 10, 14));
+        panel.setStyle("-fx-background-color: rgba(32,32,44,0.95);");
+
+        // 输入框
+        translateInput = new TextArea();
+        translateInput.setPromptText("输入要翻译的中文...");
+        translateInput.setPrefRowCount(2);
+        translateInput.setWrapText(true);
+        translateInput.setStyle(
+                "-fx-control-inner-background: rgba(40,40,52,0.9); -fx-text-fill: #e0e0e0; " +
+                "-fx-font-size: 12px; -fx-background-radius: 8; -fx-padding: 6;"
+        );
+
+        // 语言选择 + 翻译按钮 一行
+        HBox ctrlRow = new HBox(8);
+        ctrlRow.setAlignment(Pos.CENTER_LEFT);
+
+        langSelector = new ComboBox<>();
+        langSelector.getItems().addAll("English", "Japanese", "Korean", "French", "German", "Russian");
+        langSelector.setValue("English");
+        langSelector.setStyle(
+                "-fx-background-color: rgba(40,40,52,0.9); -fx-text-fill: #e0e0e0; " +
+                "-fx-font-size: 11px; -fx-background-radius: 6;"
+        );
+
+        translateBtn = new Button("翻译");
+        translateBtn.setStyle(
+                "-fx-background-color: #00d2ff; -fx-text-fill: #1e1e2e; -fx-font-weight: bold; " +
+                "-fx-font-size: 12px; -fx-padding: 4 14 4 14; -fx-background-radius: 8; -fx-cursor: hand;"
+        );
+        translateBtn.setOnAction(e -> doTranslate());
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        ctrlRow.getChildren().addAll(langSelector, spacer, translateBtn);
+
+        // 结果显示
+        translateResult = new Label();
+        translateResult.setWrapText(true);
+        translateResult.setStyle(
+                "-fx-text-fill: #00d2ff; -fx-font-size: 13px; -fx-padding: 4 2 4 2;"
+        );
+        translateResult.setVisible(false);
+
+        // 复制按钮
+        Button copyBtn = new Button("复制结果");
+        copyBtn.setStyle(
+                "-fx-background-color: transparent; -fx-text-fill: #a0a0b0; " +
+                "-fx-font-size: 11px; -fx-padding: 3 10 3 10; -fx-cursor: hand; " +
+                "-fx-border-color: rgba(160,160,176,0.3); -fx-border-radius: 6;"
+        );
+        copyBtn.setOnMouseEntered(e -> copyBtn.setStyle(
+                "-fx-background-color: rgba(0,210,255,0.1); -fx-text-fill: #00d2ff; " +
+                "-fx-font-size: 11px; -fx-padding: 3 10 3 10; -fx-cursor: hand; " +
+                "-fx-border-color: rgba(0,210,255,0.4); -fx-border-radius: 6;"
+        ));
+        copyBtn.setOnMouseExited(e -> copyBtn.setStyle(
+                "-fx-background-color: transparent; -fx-text-fill: #a0a0b0; " +
+                "-fx-font-size: 11px; -fx-padding: 3 10 3 10; -fx-cursor: hand; " +
+                "-fx-border-color: rgba(160,160,176,0.3); -fx-border-radius: 6;"
+        ));
+        copyBtn.setOnAction(e -> {
+            String text = translateResult.getText();
+            if (text != null && !text.isBlank()) {
+                ClipboardContent content = new ClipboardContent();
+                content.putString(text);
+                Clipboard.getSystemClipboard().setContent(content);
+                copyBtn.setText("已复制");
+                // 2 秒后恢复文字
+                new Thread(() -> {
+                    try {
+                        Thread.sleep(2000);
+                    } catch (InterruptedException ignored) {}
+                    Platform.runLater(() -> copyBtn.setText("复制结果"));
+                }).start();
+            }
+        });
+
+        panel.getChildren().addAll(translateInput, ctrlRow, translateResult, copyBtn);
+        return panel;
+    }
+
+    private void doTranslate() {
+        String text = translateInput.getText();
+        if (text == null || text.isBlank()) {
+            translateResult.setText("请输入内容");
+            translateResult.setStyle("-fx-text-fill: #ff6b6b; -fx-font-size: 13px;");
+            translateResult.setVisible(true);
+            return;
+        }
+        if (translateCallback == null) {
+            translateResult.setText("翻译服务未就绪");
+            translateResult.setStyle("-fx-text-fill: #ff6b6b; -fx-font-size: 13px;");
+            translateResult.setVisible(true);
+            return;
+        }
+        String lang = langSelector.getValue();
+        translateBtn.setText("翻译中...");
+        translateBtn.setDisable(true);
+        translateResult.setText("");
+        translateResult.setVisible(true);
+
+        translateCallback.apply(text, lang).thenAccept(result -> {
+            Platform.runLater(() -> {
+                translateResult.setText(result);
+                translateResult.setStyle("-fx-text-fill: #00d2ff; -fx-font-size: 13px;");
+                translateBtn.setText("翻译");
+                translateBtn.setDisable(false);
+            });
+        }).exceptionally(ex -> {
+            Platform.runLater(() -> {
+                translateResult.setText("翻译失败: " + ex.getMessage());
+                translateResult.setStyle("-fx-text-fill: #ff6b6b; -fx-font-size: 13px;");
+                translateBtn.setText("翻译");
+                translateBtn.setDisable(false);
+            });
+            return null;
+        });
+    }
+
+    public void setTranslateCallback(BiFunction<String, String, CompletableFuture<String>> callback) {
+        this.translateCallback = callback;
     }
 
     /**
