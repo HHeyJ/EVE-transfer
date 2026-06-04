@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EVE 聊天翻译</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #0f1419;
+            color: #c9d1d9;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .header {
+            background: #161b22;
+            border-bottom: 1px solid #30363d;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+        .header h1 { font-size: 16px; color: #58a6ff; }
+        .header .dir-info { font-size: 12px; color: #8b949e; }
+        .setup-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+        }
+        .setup-panel input {
+            width: 500px;
+            max-width: 90vw;
+            padding: 12px 16px;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            background: #0d1117;
+            color: #c9d1d9;
+            font-size: 14px;
+        }
+        .setup-panel button {
+            padding: 10px 32px;
+            border: none;
+            border-radius: 8px;
+            background: #238636;
+            color: #fff;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .setup-panel button:hover { background: #2ea043; }
+        .tabs {
+            display: flex;
+            gap: 4px;
+            padding: 8px 12px 0;
+            background: #161b22;
+            border-bottom: 1px solid #30363d;
+            overflow-x: auto;
+            flex-shrink: 0;
+        }
+        .tab {
+            padding: 8px 16px;
+            border-radius: 6px 6px 0 0;
+            cursor: pointer;
+            font-size: 13px;
+            white-space: nowrap;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .tab:hover { background: #21262d; }
+        .tab.active { background: #0f1419; color: #58a6ff; border: 1px solid #30363d; border-bottom: none; }
+        .tab .dot { width: 6px; height: 6px; border-radius: 50%; background: #484f58; }
+        .tab .dot.on { background: #3fb950; }
+        .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+        .listen-banner {
+            background: rgba(187, 128, 9, 0.15);
+            border: 1px solid rgba(187, 128, 9, 0.4);
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+        .listen-banner span { font-size: 13px; color: #d29922; }
+        .listen-banner button {
+            padding: 6px 16px;
+            border: none;
+            border-radius: 6px;
+            background: #1f6feb;
+            color: #fff;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .listen-banner button:hover { background: #388bfd; }
+        .msg-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+        }
+        .msg-item {
+            padding: 8px 12px;
+            margin-bottom: 6px;
+            background: #161b22;
+            border: 1px solid #21262d;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+        .msg-meta {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 4px;
+            font-size: 11px;
+            color: #8b949e;
+        }
+        .msg-player { color: #58a6ff; font-weight: 600; }
+        .msg-text { color: #c9d1d9; line-height: 1.5; word-break: break-word; }
+        .empty-state {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #484f58;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>EVE 聊天翻译</h1>
+        <div class="dir-info" id="dirInfo" th:text="${dirSet} ? ${dirPath} : '未选择日志目录'"></div>
+    </div>
+
+    <div class="setup-panel" id="setupPanel" th:style="${dirSet} ? 'display:none' : ''">
+        <input type="text" id="dirInput" placeholder="粘贴聊天记录文件夹路径，如 /Users/xxx/Documents/EVE/logs/Chatlogs">
+        <button onclick="confirmDir()">进入聊天主页</button>
+    </div>
+
+    <div class="tabs" id="tabs" th:style="${dirSet} ? '' : 'display:none'"></div>
+    <div class="main" id="main" th:style="${dirSet} ? '' : 'display:none'">
+        <div class="listen-banner" id="listenBanner" style="display:none">
+            <span>当前未监听该频道，无法接收新消息</span>
+            <button onclick="startListen()">开始监听</button>
+        </div>
+        <div class="msg-list" id="msgList"></div>
+    </div>
+
+    <script>
+        let currentChannel = null;
+        let channels = [];
+        let listeningMap = {};
+        let messageCache = {};
+
+        async function confirmDir() {
+            const path = document.getElementById('dirInput').value.trim();
+            if (!path) return alert('请输入路径');
+            const res = await fetch('/api/directory', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path })
+            });
+            const data = await res.json();
+            if (data.success) {
+                document.getElementById('setupPanel').style.display = 'none';
+                document.getElementById('tabs').style.display = 'flex';
+                document.getElementById('main').style.display = 'flex';
+                document.getElementById('dirInfo').textContent = path;
+                await loadChannels();
+                connectSse();
+            } else {
+                alert(data.error || '设置失败');
+            }
+        }
+
+        async function loadChannels() {
+            const res = await fetch('/api/channels');
+            channels = await res.json();
+            renderTabs();
+            if (channels.length > 0 && !currentChannel) {
+                switchChannel(channels[0]);
+            }
+        }
+
+        function renderTabs() {
+            const container = document.getElementById('tabs');
+            container.innerHTML = '';
+            for (const ch of channels) {
+                const div = document.createElement('div');
+                div.className = 'tab' + (ch === currentChannel ? ' active' : '');
+                div.onclick = () => switchChannel(ch);
+                const dotClass = listeningMap[ch] ? 'dot on' : 'dot';
+                div.innerHTML = `<span class="${dotClass}"></span><span>${escapeHtml(ch)}</span>`;
+                container.appendChild(div);
+            }
+        }
+
+        async function switchChannel(ch) {
+            currentChannel = ch;
+            renderTabs();
+            const res = await fetch(`/api/channels/${encodeURIComponent(ch)}/listening`);
+            const data = await res.json();
+            listeningMap[ch] = data.listening;
+            updateBanner();
+            loadMessages(ch);
+        }
+
+        function updateBanner() {
+            const banner = document.getElementById('listenBanner');
+            banner.style.display = listeningMap[currentChannel] ? 'none' : 'flex';
+        }
+
+        async function startListen() {
+            if (!currentChannel) return;
+            await fetch(`/api/channels/${encodeURIComponent(currentChannel)}/listening`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ listening: true })
+            });
+            listeningMap[currentChannel] = true;
+            updateBanner();
+            renderTabs();
+            loadMessages(currentChannel);
+        }
+
+        async function loadMessages(ch) {
+            const res = await fetch(`/api/channels/${encodeURIComponent(ch)}/messages`);
+            const msgs = await res.json();
+            messageCache[ch] = msgs;
+            renderMessages(ch);
+        }
+
+        function renderMessages(ch) {
+            const list = document.getElementById('msgList');
+            list.innerHTML = '';
+            const msgs = messageCache[ch] || [];
+            if (msgs.length === 0) {
+                list.innerHTML = '<div class="empty-state">暂无消息</div>';
+                return;
+            }
+            for (const m of msgs) {
+                appendMessageEl(list, m);
+            }
+            list.scrollTop = list.scrollHeight;
+        }
+
+        function appendMessageEl(container, m) {
+            const div = document.createElement('div');
+            div.className = 'msg-item';
+            div.innerHTML = `
+                <div class="msg-meta">
+                    <span class="msg-player">${escapeHtml(m.player)}</span>
+                    <span>${escapeHtml(m.time)}</span>
+                </div>
+                <div class="msg-text">${escapeHtml(m.translated || m.original)}</div>
+            `;
+            container.appendChild(div);
+        }
+
+        function connectSse() {
+            const es = new EventSource('/sse/chat');
+            es.onmessage = (e) => {
+                const payload = JSON.parse(e.data);
+                if (payload.type === 'channels') {
+                    loadChannels();
+                    return;
+                }
+                const ch = payload.channel;
+                if (!messageCache[ch]) messageCache[ch] = [];
+                messageCache[ch].push(payload);
+                if (messageCache[ch].length > 200) messageCache[ch].shift();
+                if (ch === currentChannel) {
+                    const list = document.getElementById('msgList');
+                    if (messageCache[ch].length === 1) list.innerHTML = '';
+                    appendMessageEl(list, payload);
+                    list.scrollTop = list.scrollHeight;
+                }
+            };
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 如果后端已设置目录，自动加载频道和连接 SSE
+        if (document.getElementById('setupPanel').style.display === 'none') {
+            loadChannels().then(connectSse);
+        }
+    </script>
+</body>
+</html>

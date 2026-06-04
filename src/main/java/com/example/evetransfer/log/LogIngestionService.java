@@ -23,35 +23,11 @@ public class LogIngestionService {
     // 每个文件对应一个 LogFileState，ConcurrentHashMap 保证多线程安全
     private final Map<Path, LogFileState> fileStates = new ConcurrentHashMap<>();
     private final Consumer<ChatMessage> messageConsumer; // 解析出消息后推给谁
-    private final Set<String> monitoredChannels = ConcurrentHashMap.newKeySet(); // 当前监听的频道
-    private final Set<Path> ignoredFiles = ConcurrentHashMap.newKeySet(); // 已确认不在监听列表中的文件
-    private int initialLimitPerChannel = 0; // 运行时首次读取新文件的限流条数（0 表示不限流）
 
     public LogIngestionService(Consumer<ChatMessage> messageConsumer) {
         this.messageConsumer = messageConsumer;
     }
 
-    /**
-     * 设置运行时首次读取新文件的限流条数。
-     * 和启动时 handleInitialScan 的 limitPerChannel 保持一致。
-     */
-    public void setInitialLimitPerChannel(int limit) {
-        this.initialLimitPerChannel = limit;
-    }
-
-    /**
-     * 设置要监听的频道。只有这些频道的消息会被消费。
-     * 重新设置时清空已忽略的文件列表，允许之前被忽略的文件重新进入。
-     */
-    public void setMonitoredChannels(Set<String> channels) {
-        monitoredChannels.clear();
-        monitoredChannels.addAll(channels);
-        ignoredFiles.clear();
-    }
-
-    public Set<String> getMonitoredChannels() {
-        return new HashSet<>(monitoredChannels);
-    }
 
     /**
      * 扫描所有文件，快速提取频道名（只读文件头，不消费消息）。
@@ -109,15 +85,8 @@ public class LogIngestionService {
         // 只处理在监听列表中的频道
         for (Path path : paths) {
             final LogFileState state = fileStates.computeIfAbsent(path, LogFileState::new);
-            if (state.getChannelName() != null && !monitoredChannels.contains(state.getChannelName())) {
-                continue;
-            }
             try {
                 List<String> lines = reader.readNewLines(path, state);
-                // 读取后如果频道已确定且不在监听列表中，丢弃已解析的消息
-                if (state.getChannelName() != null && !monitoredChannels.contains(state.getChannelName())) {
-                    continue;
-                }
                 if (!lines.isEmpty()) {
                     System.out.println("[ingest] 初始扫描 " + path.getFileName() + " -> " + lines.size() + " 行");
                 }
@@ -134,31 +103,19 @@ public class LogIngestionService {
             return;
         }
 
-        // 第二步：按频道分组，过滤掉不在监听列表中的频道，
-        // 每个频道按时间排序，只保留最近的 limitPerChannel 条
-        Map<String, List<ChatMessage>> byChannel = allMessages.stream()
-                .filter(msg -> monitoredChannels.contains(msg.getChannel()))
-                .collect(Collectors.groupingBy(ChatMessage::getChannel));
-
         List<ChatMessage> toKeep = new ArrayList<>();
-        for (Map.Entry<String, List<ChatMessage>> entry : byChannel.entrySet()) {
-            List<ChatMessage> list = entry.getValue();
-            // 按时间戳排序，时间相同按 id 排序（id 是自增的，保证稳定）
-            list.sort(Comparator.comparing(ChatMessage::getTimestamp)
-                    .thenComparingLong(ChatMessage::getId));
-            // 取最后 limitPerChannel 条
-            int fromIndex = Math.max(0, list.size() - limitPerChannel);
-            toKeep.addAll(list.subList(fromIndex, list.size()));
-        }
 
-        // 第三步：把所有保留的消息再按时间顺序统一发送给 consumer
-        toKeep.sort(Comparator.comparing(ChatMessage::getTimestamp)
+        // 按时间戳排序，时间相同按 id 排序（id 是自增的，保证稳定）
+        allMessages.sort(Comparator.comparing(ChatMessage::getTimestamp)
                 .thenComparingLong(ChatMessage::getId));
+        // 取最后 limitPerChannel 条
+        int fromIndex = Math.max(0, allMessages.size() - limitPerChannel);
+        List<ChatMessage> chatMessages = allMessages.subList(fromIndex, allMessages.size());
 
         System.out.println("[ingest] 初始扫描完成，共 " + allMessages.size()
                 + " 条消息，保留 " + toKeep.size() + " 条送入翻译队列");
 
-        for (ChatMessage msg : toKeep) {
+        for (ChatMessage msg : chatMessages) {
             messageConsumer.accept(msg);
         }
     }
@@ -169,22 +126,11 @@ public class LogIngestionService {
      * 对每个文件加锁，防止 WatchService + pollDirectory 同时触发导致重复读取。
      */
     public void handleFileChange(Path path) {
-        // 已确认不监听的文件，直接跳过
-        if (ignoredFiles.contains(path)) {
-            return;
-        }
-
         // computeIfAbsent 是原子的，返回的 state 对象可作为该文件的锁
         final LogFileState state = fileStates.computeIfAbsent(path, LogFileState::new);
         synchronized (state) {
             try {
-                boolean isFirstRead = state.getLastReadPosition() == 0;
                 List<String> lines = reader.readNewLines(path, state);
-                // 读取后如果频道已确定且不在监听列表中，标记为忽略并丢弃
-                if (state.getChannelName() != null && !monitoredChannels.contains(state.getChannelName())) {
-                    ignoredFiles.add(path);
-                    return;
-                }
 
                 if (!lines.isEmpty()) {
                     System.out.println("[ingest] " + path.getFileName() + " -> " + lines.size() + " 行新内容");
@@ -194,19 +140,6 @@ public class LogIngestionService {
                 List<ChatMessage> fileMessages = new ArrayList<>();
                 for (String line : lines) {
                     parser.parseLine(line, state).ifPresent(fileMessages::add);
-                }
-
-                // 首次读取且配置了限流：按时间排序，只保留最近的 N 条
-
-                System.out.println("isFirstRead:" + isFirstRead);
-                System.out.println("initialLimitPerChannel:" + initialLimitPerChannel);
-                System.out.println("fileMessages.size:" + fileMessages.size());
-
-                if (isFirstRead && initialLimitPerChannel > 0 && !fileMessages.isEmpty()) {
-                    fileMessages.sort(Comparator.comparing(ChatMessage::getTimestamp)
-                            .thenComparingLong(ChatMessage::getId));
-                    int fromIndex = Math.max(0, fileMessages.size() - initialLimitPerChannel);
-                    fileMessages = fileMessages.subList(fromIndex, fileMessages.size());
                 }
 
                 for (ChatMessage msg : fileMessages) {
