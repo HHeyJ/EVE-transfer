@@ -4,6 +4,8 @@ import com.example.evetransfer.log.LogDirectoryMonitor;
 import com.example.evetransfer.log.LogIngestionService;
 import com.example.evetransfer.model.ChatMessage;
 import com.example.evetransfer.model.LogFileState;
+import com.example.evetransfer.translation.QueuedTranslationService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -27,6 +29,9 @@ public class ChatService {
     private LogDirectoryMonitor monitor;
     private LogIngestionService ingestionService;
     private Path logDir;
+
+    @Autowired
+    private QueuedTranslationService translationService;
 
     public boolean isDirectorySet() {
         return logDir != null;
@@ -115,9 +120,9 @@ public class ChatService {
                 list.remove(0);
             }
         }
-        // 推送最新订阅消息
-        if (channelListening.getOrDefault(ch,false)) {
-            pushToClients(msg);
+        // 只对开启监听的频道做翻译并推送
+        if (channelListening.getOrDefault(ch, false)) {
+            translationService.offer(msg, translated -> pushToClients(translated));
         }
     }
 

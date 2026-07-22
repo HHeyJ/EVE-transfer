@@ -26,7 +26,7 @@ public class ChatMessage {
         this.player = player;
         this.original = original;
         // 第一版不接 AI 翻译 API，默认返回原文
-        this.translated = original;
+//        this.translated = original;
     }
 
     public long getId() { return id; }
