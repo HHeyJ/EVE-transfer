@@ -125,11 +125,17 @@ public class LogIngestionService {
      * 对未在监听列表中的频道做过滤，避免新频道自动出现在 UI 上。
      * 对每个文件加锁，防止 WatchService + pollDirectory 同时触发导致重复读取。
      */
-    public void handleFileChange(Path path) {
+    public void handleFileChange(Path path, Map<String, Boolean> channelListening) {
         // computeIfAbsent 是原子的，返回的 state 对象可作为该文件的锁
         final LogFileState state = fileStates.computeIfAbsent(path, LogFileState::new);
         synchronized (state) {
             try {
+
+                String channelName = Objects.isNull(state.getChannelName()) ? reader.peekChannelName(path, state) : state.getChannelName();
+                if (!channelListening.getOrDefault(channelName,false)) {
+                    return;
+                }
+
                 List<String> lines = reader.readNewLines(path, state);
 
                 if (!lines.isEmpty()) {

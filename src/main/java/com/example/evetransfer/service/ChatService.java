@@ -55,7 +55,7 @@ public class ChatService {
         // 启动监控（先不监听任何频道，等用户手动开启）
         monitor = new LogDirectoryMonitor(logDir, path -> {
             ingestionService.registerFile(path);
-            ingestionService.handleFileChange(path);
+            ingestionService.handleFileChange(path,channelListening);
         });
         monitor.start();
     }
