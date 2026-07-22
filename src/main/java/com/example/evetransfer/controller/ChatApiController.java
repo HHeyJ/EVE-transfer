@@ -2,6 +2,7 @@ package com.example.evetransfer.controller;
 
 import com.example.evetransfer.model.ChatMessage;
 import com.example.evetransfer.service.ChatService;
+import com.example.evetransfer.translation.DeepSeekTranslationService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,9 +15,11 @@ import java.util.Set;
 public class ChatApiController {
 
     private final ChatService chatService;
+    private final DeepSeekTranslationService translationService;
 
-    public ChatApiController(ChatService chatService) {
+    public ChatApiController(ChatService chatService, DeepSeekTranslationService translationService) {
         this.chatService = chatService;
+        this.translationService = translationService;
     }
 
     @PostMapping("/directory")
@@ -56,5 +59,20 @@ public class ChatApiController {
     @GetMapping("/channels/{channel}/messages")
     public List<ChatMessage> getMessages(@PathVariable String channel) {
         return chatService.getMessages(channel);
+    }
+
+    @PostMapping("/translate")
+    public ResponseEntity<?> translate(@RequestBody Map<String, String> body) {
+        String text = body.get("text");
+        String targetLanguage = body.get("targetLanguage");
+        if (text == null || text.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "文本不能为空"));
+        }
+        try {
+            String result = translationService.translateTo(text, targetLanguage).join();
+            return ResponseEntity.ok(Map.of("translated", result));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 }

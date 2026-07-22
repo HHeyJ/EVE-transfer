@@ -129,6 +129,82 @@
             color: #484f58;
             font-size: 13px;
         }
+        .compose-panel {
+            border-top: 1px solid #30363d;
+            background: #161b22;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .compose-row {
+            display: flex;
+            gap: 8px;
+            align-items: stretch;
+        }
+        .compose-panel textarea {
+            flex: 1;
+            min-height: 44px;
+            max-height: 120px;
+            padding: 8px 10px;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            background: #0d1117;
+            color: #c9d1d9;
+            font-size: 13px;
+            font-family: inherit;
+            resize: vertical;
+        }
+        .compose-panel select {
+            padding: 6px 10px;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            background: #0d1117;
+            color: #c9d1d9;
+            font-size: 13px;
+        }
+        .compose-panel button {
+            padding: 6px 16px;
+            border: none;
+            border-radius: 6px;
+            background: #1f6feb;
+            color: #fff;
+            font-size: 13px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .compose-panel button:hover:not(:disabled) { background: #388bfd; }
+        .compose-panel button:disabled { background: #30363d; cursor: not-allowed; }
+        .compose-result {
+            font-size: 13px;
+            color: #c9d1d9;
+            padding: 8px 10px;
+            border: 1px dashed #30363d;
+            border-radius: 6px;
+            background: #0d1117;
+            min-height: 32px;
+            word-break: break-word;
+            white-space: pre-wrap;
+            display: none;
+            align-items: flex-start;
+            gap: 8px;
+        }
+        .compose-result.show { display: flex; }
+        .compose-result.error { color: #f85149; border-color: #f85149; }
+        .compose-result-text { flex: 1; }
+        .compose-copy-btn {
+            padding: 4px 10px;
+            border: 1px solid #30363d;
+            border-radius: 4px;
+            background: #21262d;
+            color: #c9d1d9;
+            font-size: 12px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .compose-copy-btn:hover { background: #30363d; }
+        .compose-copy-btn.copied { background: #238636; border-color: #238636; color: #fff; }
     </style>
 </head>
 <body>
@@ -149,6 +225,25 @@
             <button onclick="startListen()">开始监听</button>
         </div>
         <div class="msg-list" id="msgList"></div>
+        <div class="compose-panel">
+            <div class="compose-row">
+                <textarea id="composeInput" placeholder="输入想说的话（中文）..."></textarea>
+                <select id="composeLang">
+                    <option value="English">英文</option>
+                    <option value="Russian">俄文</option>
+                    <option value="Korean">韩文</option>
+                    <option value="Japanese">日文</option>
+                    <option value="French">法文</option>
+                    <option value="German">德文</option>
+                    <option value="Spanish">西班牙文</option>
+                </select>
+                <button id="composeBtn" onclick="translateOutbound()">翻译</button>
+            </div>
+            <div class="compose-result" id="composeResult">
+                <span class="compose-result-text" id="composeResultText"></span>
+                <button class="compose-copy-btn" id="composeCopyBtn" onclick="copyComposeResult()" style="display:none">复制</button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -287,6 +382,84 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        async function translateOutbound() {
+            const textarea = document.getElementById('composeInput');
+            const btn = document.getElementById('composeBtn');
+            const result = document.getElementById('composeResult');
+            const resultText = document.getElementById('composeResultText');
+            const copyBtn = document.getElementById('composeCopyBtn');
+            const text = textarea.value.trim();
+            if (!text) {
+                result.className = 'compose-result show error';
+                resultText.textContent = '请输入要翻译的内容';
+                copyBtn.style.display = 'none';
+                return;
+            }
+            const targetLanguage = document.getElementById('composeLang').value;
+            btn.disabled = true;
+            const originalLabel = btn.textContent;
+            btn.textContent = '翻译中...';
+            result.className = 'compose-result show';
+            resultText.textContent = '...';
+            copyBtn.style.display = 'none';
+            try {
+                const res = await fetch('/api/translate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text, targetLanguage })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    result.className = 'compose-result show error';
+                    resultText.textContent = data.error || '翻译失败';
+                    copyBtn.style.display = 'none';
+                } else {
+                    result.className = 'compose-result show';
+                    resultText.textContent = data.translated;
+                    copyBtn.textContent = '复制';
+                    copyBtn.classList.remove('copied');
+                    copyBtn.style.display = data.translated ? 'inline-block' : 'none';
+                }
+            } catch (e) {
+                result.className = 'compose-result show error';
+                resultText.textContent = '请求失败：' + e.message;
+                copyBtn.style.display = 'none';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalLabel;
+            }
+        }
+
+        async function copyComposeResult() {
+            const resultText = document.getElementById('composeResultText');
+            const copyBtn = document.getElementById('composeCopyBtn');
+            const text = resultText.textContent;
+            if (!text) return;
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(text);
+                } else {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.style.position = 'fixed';
+                    ta.style.opacity = '0';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(ta);
+                }
+                copyBtn.textContent = '已复制';
+                copyBtn.classList.add('copied');
+                setTimeout(() => {
+                    copyBtn.textContent = '复制';
+                    copyBtn.classList.remove('copied');
+                }, 1500);
+            } catch (e) {
+                copyBtn.textContent = '复制失败';
+                setTimeout(() => { copyBtn.textContent = '复制'; }, 1500);
+            }
         }
 
         // 如果后端已设置目录，自动加载频道和连接 SSE
