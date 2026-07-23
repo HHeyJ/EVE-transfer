@@ -103,8 +103,6 @@ public class LogIngestionService {
             return;
         }
 
-        List<ChatMessage> toKeep = new ArrayList<>();
-
         // 按时间戳排序，时间相同按 id 排序（id 是自增的，保证稳定）
         allMessages.sort(Comparator.comparing(ChatMessage::getTimestamp)
                 .thenComparingLong(ChatMessage::getId));
@@ -113,7 +111,7 @@ public class LogIngestionService {
         List<ChatMessage> chatMessages = allMessages.subList(fromIndex, allMessages.size());
 
         System.out.println("[ingest] 初始扫描完成，共 " + allMessages.size()
-                + " 条消息，保留 " + toKeep.size() + " 条送入翻译队列");
+                + " 条消息，保留 " + chatMessages.size() + " 条送入翻译队列");
 
         for (ChatMessage msg : chatMessages) {
             messageConsumer.accept(msg);
