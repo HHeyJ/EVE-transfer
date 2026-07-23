@@ -121,6 +121,8 @@
         }
         .msg-player { color: #58a6ff; font-weight: 600; }
         .msg-text { color: #c9d1d9; line-height: 1.5; word-break: break-word; }
+        .msg-original { color: #8b949e; font-size: 12px; line-height: 1.5; word-break: break-word; margin-top: 2px; }
+        .player-hl { color: #f0b429; font-weight: 700; }
         .empty-state {
             flex: 1;
             display: flex;
@@ -251,6 +253,8 @@
         let channels = [];
         let listeningMap = {};
         let messageCache = {};
+        // 已见到过的玩家名，用于在正文里高亮
+        let knownPlayers = new Set();
 
         async function confirmDir() {
             const path = document.getElementById('dirInput').value.trim();
@@ -341,22 +345,54 @@
                 return;
             }
             for (const m of msgs) {
+                if (m.player) knownPlayers.add(m.player);
+            }
+            for (const m of msgs) {
                 appendMessageEl(list, m);
             }
             list.scrollTop = list.scrollHeight;
         }
 
         function appendMessageEl(container, m) {
+            if (m.player) knownPlayers.add(m.player);
             const div = document.createElement('div');
             div.className = 'msg-item';
+            const translated = m.translated || '';
+            const original = m.original || '';
+            const showBoth = translated && translated !== original;
+            const translatedHtml = highlightPlayers(translated || original);
+            const originalHtml = showBoth ? `<div class="msg-original">${highlightPlayers(original)}</div>` : '';
             div.innerHTML = `
                 <div class="msg-meta">
                     <span class="msg-player">${escapeHtml(m.player)}</span>
                     <span>${escapeHtml(m.time)}</span>
                 </div>
-                <div class="msg-text">${escapeHtml(m.translated || m.original)}</div>
+                <div class="msg-text">${translatedHtml}</div>
+                ${originalHtml}
             `;
             container.appendChild(div);
+        }
+
+        // 在文本里把已知玩家名标黄加粗；单次替换，避免命中已插入的 span 属性。
+        function highlightPlayers(text) {
+            if (!text) return '';
+            const names = Array.from(knownPlayers)
+                .filter(n => n && n.trim())
+                .sort((a, b) => b.length - a.length); // 长名优先，避免子串抢先命中
+            if (names.length === 0) return escapeHtml(text);
+            const pattern = names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+            const re = new RegExp(pattern, 'g');
+            let out = '';
+            let last = 0;
+            let m;
+            while ((m = re.exec(text)) !== null) {
+                out += escapeHtml(text.slice(last, m.index));
+                out += `<span class="player-hl">${escapeHtml(m[0])}</span>`;
+                last = m.index + m[0].length;
+                if (m[0].length === 0) re.lastIndex++;
+            }
+            out += escapeHtml(text.slice(last));
+            return out;
         }
 
         function connectSse() {
