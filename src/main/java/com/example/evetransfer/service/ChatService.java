@@ -5,6 +5,7 @@ import com.example.evetransfer.log.LogIngestionService;
 import com.example.evetransfer.model.ChatMessage;
 import com.example.evetransfer.model.LogFileState;
 import com.example.evetransfer.translation.QueuedTranslationService;
+import com.example.evetransfer.util.SkipUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -126,6 +127,9 @@ public class ChatService {
         String ch = msg.getChannel();
         if (channelStore.registerIfAbsent(ch)) {
             sseBroadcaster.pushChannelListUpdate();
+        }
+        if (SkipUtil.skip(msg.getOriginal())) {
+            return;
         }
         channelStore.appendMessage(ch, msg);
         if (channelStore.isListening(ch)) {

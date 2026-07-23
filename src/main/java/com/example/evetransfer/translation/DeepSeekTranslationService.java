@@ -1,5 +1,6 @@
 package com.example.evetransfer.translation;
 
+import com.example.evetransfer.model.ChatMessage;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -11,6 +12,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -30,12 +32,29 @@ public class DeepSeekTranslationService implements TranslationService {
     private static final double TEMPERATURE = 1.0;
 
     private static final String SYSTEM_PROMPT =
-            "你是一个EVE Online游戏聊天翻译器。用户将发送外语聊天消息，你需要：\n" +
-            "1. 快速翻译成中文，只输出译文，不加任何解释、标点或格式标记。\n" +
-            "2. 保留所有EVE特有名词（如舰船名、势力名、物品名、星系名）的英文原文或通用简称（例如：Tengu、Amarr、PLEX、Jita）。\n" +
-            "3. 对简单问候或单个单词（o7, gf, brb）使用玩家常用译法（例如：o7→致敬，gf→好局，brb→马上回）。\n" +
-            "4. 不翻译表情符号（:D, :(, o/）和常见的游戏缩写（FC, DPS, ISK, WH）。\n" +
-            "5. 直接输出译文，严禁输出其他内容";
+            "你是一位精通中英双语、熟悉 EVE Online 游戏术语和社区文化的专业翻译。你的任务是将用户逐条提供的英文聊天记录（包含时间戳、角色名和发言内容）准确、流畅地翻译成中文。\n" +
+                    "\n" +
+                    "翻译规则：\n" +
+                    "1. **保留格式**：每条消息的 `发言者 > 内容` 结构必须原样保留，仅翻译发言内容部分。\n" +
+                    "2. **术语一致**：使用 EVE 中文玩家社区通用译名，例如：\n" +
+                    "   - NPE → 新手引导体验（New Player Experience）\n" +
+                    "   - toon → 角色/人物\n" +
+                    "   - training queue → 技能训练队列\n" +
+                    "   - ISK → 伊甸币（或保留 ISK）\n" +
+                    "   - o7 → 保持“o7”（玩家敬礼表情）\n" +
+                    "3. **风格自然**：翻译应保留原文的口语化、轻松或求助语气，避免生硬直译。例如 “nice one” → “干得漂亮”，“woot” → “哇哦”。\n" +
+                    "4. **上下文连贯**：由于是多轮对话，需参考之前轮次的翻译结果，确保人名、事件、术语前后一致。如果某条消息指代了之前的发言（如“Yeah, maybe I did something like that”），要结合历史语境译出合理的指代。\n" +
+                    "5. **特殊标记**：时间戳和角色名保持原样（不翻译），仅在内容中出现的游戏内物品、地点、舰船名等按社区习惯翻译。\n" +
+                    "6. **无额外解释**：仅输出翻译后的`内容`，不要附加注释、说明或元评论。\n" +
+                    "7. ***绝对禁止***：绝对禁止返回输出`发言者`！！！\n" +
+                    "\n" +
+                    "示例输入：\n" +
+                    "Gilli Anne Dakken > Eagle is Airborne o7\n" +
+                    "\n" +
+                    "示例输出：\n" +
+                    "雄鹰已经起飞 o7\n" +
+                    "\n" +
+                    "现在，请开始逐条翻译用户提供的聊天记录，每条独立但保持整体连贯。";
 
     private final HttpClient httpClient = HttpClient.newHttpClient();
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -62,54 +81,54 @@ public class DeepSeekTranslationService implements TranslationService {
     }
 
     @Override
-    public CompletableFuture<String> translate(String text, String targetLanguage) {
+    public CompletableFuture<String> translate(ChatMessage msg, List<ChatMessage> history) {
+        String text = msg.getOriginal();
         if (text == null || text.isBlank()) {
-            return CompletableFuture.completedFuture(text);
-        }
-        if (containsChinese(text)) {
-            return CompletableFuture.completedFuture(text);
-        }
-        if (isHyperNet(text)) {
             return CompletableFuture.completedFuture(text);
         }
         if (apiKey == null || apiKey.isBlank()) {
             return CompletableFuture.completedFuture(text);
         }
-        return doRequest(SYSTEM_PROMPT, text);
+        return doRequest(SYSTEM_PROMPT, history, msg);
     }
 
     /**
      * 手动翻译：把用户输入（一般是中文）翻译成指定目标语言。
-     * 与 {@link #translate} 不同，这里不会短路中文原文。
      */
     public CompletableFuture<String> translateTo(String text, String targetLanguage) {
-        if (text == null || text.isBlank()) {
-            return CompletableFuture.completedFuture(text);
-        }
-        if (apiKey == null || apiKey.isBlank()) {
-            return CompletableFuture.completedFuture("[未配置 API Key]");
-        }
-        String lang = (targetLanguage == null || targetLanguage.isBlank()) ? "English" : targetLanguage;
-        String prompt = buildOutboundPrompt(lang);
-        return doRequest(prompt, text);
+//        if (text == null || text.isBlank()) {
+//            return CompletableFuture.completedFuture(text);
+//        }
+//        if (apiKey == null || apiKey.isBlank()) {
+//            return CompletableFuture.completedFuture("[未配置 API Key]");
+//        }
+//        String lang = (targetLanguage == null || targetLanguage.isBlank()) ? "English" : targetLanguage;
+//        String prompt = buildOutboundPrompt(lang);
+//        return doRequest(prompt, List.of(), text);
+        return CompletableFuture.completedFuture(text);
     }
 
-    private String buildOutboundPrompt(String targetLanguage) {
-        return "你是一个EVE Online游戏聊天翻译器。用户将发送一段中文聊天消息，你需要：\n" +
-                "1. 将内容翻译成 " + targetLanguage + "，只输出译文，不加任何解释、标点或格式标记。\n" +
-                "2. 保留所有EVE特有名词（如舰船名、势力名、物品名、星系名）的英文原文或通用简称（例如：Tengu、Amarr、PLEX、Jita）。\n" +
-                "3. 常用玩家缩写保持原样（o7, gf, brb, FC, DPS, ISK, WH 等）。\n" +
-                "4. 不翻译表情符号（:D, :(, o/）。\n" +
-                "5. 直接输出译文，严禁输出其他内容。";
-    }
+    private CompletableFuture<String> doRequest(String systemPrompt, List<ChatMessage> history, ChatMessage msg) {
+        List<Message> messages = new ArrayList<>();
+        messages.add(new Message("system", systemPrompt));
+        if (history != null) {
+            for (ChatMessage turn : history) {
+                if (turn == null) continue;
+                String original = turn.getOriginal();
+                String translated = turn.getTranslated();
+                String player = turn.getPlayer();
+                if (original == null || original.isBlank()) continue;
+                if (translated == null || translated.isBlank()) continue;
+                if (player == null || player.isBlank()) continue;
+                messages.add(new Message("user", player + " > " + original));
+                messages.add(new Message("assistant", translated));
+            }
+        }
+        messages.add(new Message("user", msg.getPlayer() + " > " + msg.getOriginal()));
 
-    private CompletableFuture<String> doRequest(String systemPrompt, String userText) {
         ChatRequest requestBody = new ChatRequest(
                 MODEL,
-                List.of(
-                        new Message("system", systemPrompt),
-                        new Message("user", userText)
-                ),
+                messages,
                 false,
                 new Thinking("disabled"),
                 MAX_TOKENS,
@@ -151,20 +170,6 @@ public class DeepSeekTranslationService implements TranslationService {
                     }
                 })
                 .exceptionally(ex -> "[翻译异常: " + ex.getMessage() + "]");
-    }
-
-    private boolean containsChinese(String text) {
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (c >= '一' && c <= '龥') {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean isHyperNet(String text) {
-        return text.contains("HyperNet offer");
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

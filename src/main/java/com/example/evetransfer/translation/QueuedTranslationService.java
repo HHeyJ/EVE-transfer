@@ -1,10 +1,12 @@
 package com.example.evetransfer.translation;
 
 import com.example.evetransfer.model.ChatMessage;
+import com.example.evetransfer.service.ChannelStore;
 import jakarta.annotation.PreDestroy;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
 
@@ -13,18 +15,27 @@ import java.util.function.Consumer;
  *
  * 用单线程串行消费翻译请求，避免同时打爆远端 API 或本地大模型显存。
  * 队列满时丢弃最老的一条。
+ *
+ * 翻译前会从 ChannelStore 拉取该频道最近若干条已完成翻译的消息，
+ * 组装成 user/assistant 多轮对话，保证上下文语意通畅。
  */
 @Service
 public class QueuedTranslationService {
 
+    /**
+     * 作为多轮对话上下文注入的历史消息条数。
+     */
+    private static final int CONTEXT_TURNS = 10;
+
     private final TranslationService translationService;
+    private final ChannelStore channelStore;
     private final ArrayBlockingQueue<Task> queue;
     private final ExecutorService executor;
     private volatile boolean running = true;
-    private final String targetLanguage = "zh";
 
-    public QueuedTranslationService(TranslationService translationService) {
+    public QueuedTranslationService(TranslationService translationService, ChannelStore channelStore) {
         this.translationService = translationService;
+        this.channelStore = channelStore;
         this.queue = new ArrayBlockingQueue<>(200);
         this.executor = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "translation-worker");
@@ -49,7 +60,8 @@ public class QueuedTranslationService {
                 Task task = queue.poll(1, TimeUnit.SECONDS);
                 if (task == null) continue;
 
-                translationService.translate(task.message.getOriginal(), targetLanguage)
+                List<ChatMessage> history = buildHistory(task.message);
+                translationService.translate(task.message, history)
                         .thenAccept(result -> {
                             task.message.setTranslated(result);
                             if (task.onTranslated != null) {
@@ -70,6 +82,23 @@ public class QueuedTranslationService {
             } catch (Exception ignored) {
             }
         }
+    }
+
+    /**
+     * 从当前消息所在频道回捞最近若干条已翻译消息，作为 user(原文)/assistant(译文) 的多轮对话上下文。
+     * 会跳过当前正在翻译的这一条本身，避免出现"自己回答自己"。
+     */
+    private List<ChatMessage> buildHistory(ChatMessage current) {
+        List<ChatMessage> recent = channelStore.getRecentTranslated(current.getChannel(), CONTEXT_TURNS + 1);
+        List<ChatMessage> turns = new ArrayList<>(recent.size());
+        for (ChatMessage m : recent) {
+            if (m.getId() == current.getId()) continue;
+            turns.add(m);
+        }
+        while (turns.size() > CONTEXT_TURNS) {
+            turns.removeFirst();
+        }
+        return turns;
     }
 
     @PreDestroy

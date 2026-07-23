@@ -93,4 +93,26 @@ public class ChannelStore {
         List<ChatMessage> list = channelMessages.get(channel);
         return list == null ? Collections.emptyList() : new ArrayList<>(list);
     }
+
+    /**
+     * 拿到指定频道最近 limit 条已完成翻译（有 translated 值）的消息快照，用于给翻译服务提供多轮上下文。
+     * 不受监听状态限制。
+     */
+    public List<ChatMessage> getRecentTranslated(String channel, int limit) {
+        List<ChatMessage> list = channelMessages.get(channel);
+        if (list == null || limit <= 0) return Collections.emptyList();
+        List<ChatMessage> snapshot;
+        synchronized (list) {
+            snapshot = new ArrayList<>(list);
+        }
+        List<ChatMessage> result = new ArrayList<>(Math.min(limit, snapshot.size()));
+        for (int i = snapshot.size() - 1; i >= 0 && result.size() < limit; i--) {
+            ChatMessage m = snapshot.get(i);
+            if (m.getTranslated() != null && !m.getTranslated().isBlank()) {
+                result.add(m);
+            }
+        }
+        Collections.reverse(result);
+        return result;
+    }
 }

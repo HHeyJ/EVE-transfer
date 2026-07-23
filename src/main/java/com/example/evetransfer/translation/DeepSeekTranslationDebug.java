@@ -18,7 +18,8 @@ public class DeepSeekTranslationDebug {
         String line = "-Zirnitra 5/8POP win Marshal 8/16Buy a node, win the jackpot!";
 
         long t0 = System.currentTimeMillis();
-        String result = service.translate(line, "zh").join();
+        String result = "";
+//        String result = service.translate(line, "zh").join();
         long cost = System.currentTimeMillis() - t0;
         System.out.println("译文(" + cost + "ms): " + result);
     }
