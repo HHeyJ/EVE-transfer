@@ -99,7 +99,7 @@ public class ChatService {
                         return st != null && channel.equals(st.getChannelName());
                     })
                     .collect(Collectors.toList());
-            ingestionService.handleInitialScan(files, 20);
+            ingestionService.handleInitialScan(files, 5);
         }
     }
 

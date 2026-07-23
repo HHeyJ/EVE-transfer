@@ -320,7 +320,9 @@
             listeningMap[currentChannel] = true;
             updateBanner();
             renderTabs();
-            loadMessages(currentChannel);
+            messageCache[currentChannel] = [];
+            const list = document.getElementById('msgList');
+            list.innerHTML = '<div class="empty-state">已开启监听，等待消息推送...</div>';
         }
 
         async function loadMessages(ch) {
