@@ -157,7 +157,4 @@ public class LogIngestionService {
         }
     }
 
-    public Map<Path, LogFileState> getFileStates() {
-        return fileStates;
-    }
 }

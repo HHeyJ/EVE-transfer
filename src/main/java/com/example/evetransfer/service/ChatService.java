@@ -5,78 +5,92 @@ import com.example.evetransfer.log.LogIngestionService;
 import com.example.evetransfer.model.ChatMessage;
 import com.example.evetransfer.model.LogFileState;
 import com.example.evetransfer.translation.QueuedTranslationService;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 
+/**
+ * 门面：串联日志目录、消息缓存、翻译、SSE 广播。
+ * 具体的连接管理放在 SseBroadcaster；频道数据放在 ChannelStore。
+ */
 @Service
+@RequiredArgsConstructor
 public class ChatService {
 
-    private static final int MAX_MESSAGES_PER_CHANNEL = 200;
-
-    private final Map<String, List<ChatMessage>> channelMessages = new ConcurrentHashMap<>();
-    private final Map<String, Boolean> channelListening = new ConcurrentHashMap<>();
-    private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
+    private final QueuedTranslationService translationService;
+    private final ChannelStore channelStore;
+    private final SseBroadcaster sseBroadcaster;
 
     private LogDirectoryMonitor monitor;
     private LogIngestionService ingestionService;
     private Path logDir;
 
-    @Autowired
-    private QueuedTranslationService translationService;
-
+    /**
+     * 判断用户是否已经选好了日志目录。用于首屏决定是显示设置面板还是聊天页。
+     */
     public boolean isDirectorySet() {
         return logDir != null;
     }
 
+    /**
+     * 拿到当前日志目录的字符串路径，未设置时返回空串。
+     */
     public String getLogDirPath() {
         return logDir != null ? logDir.toString() : "";
     }
 
+    /**
+     * 切换日志目录：
+     * 1) 停掉旧监控；2) 清空频道数据；3) 重建 ingestion 管道；
+     * 4) 快速扫描一次目录内所有 txt 头部提取频道名；5) 启动目录监控。
+     * 切换后所有频道默认都是"未监听"，等用户手动开启。
+     */
     public void setLogDirectory(String dirPath) throws Exception {
         stopMonitoring();
         this.logDir = Paths.get(dirPath).toAbsolutePath().normalize();
 
-        channelMessages.clear();
-        channelListening.clear();
-
+        channelStore.reset();
         ingestionService = new LogIngestionService(this::onNewMessage);
 
         List<Path> allFiles = scanTxtFiles(logDir);
         Set<String> channels = ingestionService.discoverChannels(allFiles);
         for (String ch : channels) {
-            channelListening.put(ch, false);
-            channelMessages.put(ch, Collections.synchronizedList(new ArrayList<>()));
+            channelStore.ensureChannel(ch);
         }
 
-        // 启动监控（先不监听任何频道，等用户手动开启）
         monitor = new LogDirectoryMonitor(logDir, path -> {
             ingestionService.registerFile(path);
-            ingestionService.handleFileChange(path,channelListening);
+            ingestionService.handleFileChange(path, channelStore.getListeningView());
         });
         monitor.start();
     }
 
+    /**
+     * 返回当前所有已知频道的名字（含未监听的），供前端渲染 tab 列表。
+     */
     public Set<String> getChannels() {
-        return new TreeSet<>(channelListening.keySet());
+        return channelStore.getChannels();
     }
 
+    /**
+     * 查询某个频道是否正在监听。前端根据这个值决定要不要显示"开始监听"横幅。
+     */
     public boolean isListening(String channel) {
-        return channelListening.getOrDefault(channel, false);
+        return channelStore.isListening(channel);
     }
 
+    /**
+     * 切换某频道的监听开关。
+     * 打开监听时，回补一次历史扫描（每个频道保留最近 20 条），
+     * 让用户开箱就能看到近期消息而不用等新增。
+     */
     public void setListening(String channel, boolean listening) {
-        channelListening.put(channel, listening);
-
-        // 如果开启监听，扫描一次该频道的历史消息
+        channelStore.setListening(channel, listening);
         if (listening && logDir != null) {
             List<Path> files = scanTxtFiles(logDir).stream()
                     .filter(p -> {
@@ -88,63 +102,41 @@ public class ChatService {
         }
     }
 
+    /**
+     * 拿到指定频道当前缓存的消息（未监听则返回空列表）。
+     */
     public List<ChatMessage> getMessages(String channel) {
-        if (channelListening.getOrDefault(channel,false)) {
-            List<ChatMessage> list = channelMessages.get(channel);
-            return list == null ? Collections.emptyList() : new ArrayList<>(list);
-        }
-        return Collections.emptyList();
+        return channelStore.getMessages(channel);
     }
 
+    /**
+     * SSE 订阅入口，直接委派给广播器。
+     */
     public SseEmitter subscribe() {
-        SseEmitter emitter = new SseEmitter(0L);
-        emitters.add(emitter);
-        emitter.onCompletion(() -> emitters.remove(emitter));
-        emitter.onTimeout(() -> emitters.remove(emitter));
-        emitter.onError(e -> emitters.remove(emitter));
-        return emitter;
+        return sseBroadcaster.subscribe();
     }
 
+    /**
+     * ingestion 管道解析出一条新消息后的回调：
+     * 1) 遇到新频道就登记并通知前端刷新频道列表；
+     * 2) 消息永远进入频道缓存（哪怕未监听也保留，方便后续开启监听时展示）；
+     * 3) 只对正在监听的频道触发翻译；翻译完成后推给所有 SSE 客户端。
+     */
     private void onNewMessage(ChatMessage msg) {
         String ch = msg.getChannel();
-        boolean isNewChannel = !channelListening.containsKey(ch);
-        if (isNewChannel) {
-            channelListening.put(ch, false);
-            channelMessages.put(ch, Collections.synchronizedList(new ArrayList<>()));
-            pushChannelListUpdate();
+        if (channelStore.registerIfAbsent(ch)) {
+            sseBroadcaster.pushChannelListUpdate();
         }
-        List<ChatMessage> list = channelMessages.get(ch);
-        synchronized (list) {
-            list.add(msg);
-            if (list.size() > MAX_MESSAGES_PER_CHANNEL) {
-                list.remove(0);
-            }
-        }
-        // 只对开启监听的频道做翻译并推送
-        if (channelListening.getOrDefault(ch, false)) {
-            translationService.offer(msg, translated -> pushToClients(translated));
+        channelStore.appendMessage(ch, msg);
+        if (channelStore.isListening(ch)) {
+            translationService.offer(msg, sseBroadcaster::pushMessage);
         }
     }
 
-    private void pushToClients(ChatMessage msg) {
-        String json = String.format(
-                "{\"id\":%d,\"channel\":\"%s\",\"player\":\"%s\",\"time\":\"%s\",\"original\":\"%s\",\"translated\":\"%s\"}",
-                msg.getId(),
-                escapeJson(msg.getChannel()),
-                escapeJson(msg.getPlayer()),
-                escapeJson(msg.getTimeStr()),
-                escapeJson(msg.getOriginal()),
-                escapeJson(msg.getTranslated())
-        );
-        for (SseEmitter emitter : emitters) {
-            try {
-                emitter.send(SseEmitter.event().data(json));
-            } catch (IOException e) {
-                emitters.remove(emitter);
-            }
-        }
-    }
-
+    /**
+     * 罗列目录下所有 .txt 日志文件。目录不存在或不可读时返回空列表，
+     * 保证上层逻辑不用处理 IOException。
+     */
     private List<Path> scanTxtFiles(Path dir) {
         List<Path> files = new ArrayList<>();
         if (java.nio.file.Files.exists(dir)) {
@@ -155,32 +147,13 @@ public class ChatService {
         return files;
     }
 
-    private void pushChannelListUpdate() {
-        String json = "{\"type\":\"channels\"}";
-        for (SseEmitter emitter : emitters) {
-            try {
-                emitter.send(SseEmitter.event().data(json));
-            } catch (IOException e) {
-                emitters.remove(emitter);
-            }
-        }
-    }
-
+    /**
+     * 关闭当前的目录监控（如果有）。切换目录或应用退出时调用，防止 WatchService 泄漏。
+     */
     private void stopMonitoring() {
         if (monitor != null) {
             monitor.close();
             monitor = null;
         }
-    }
-
-    private String escapeJson(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\b", "\\b")
-                .replace("\f", "\\f")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
     }
 }
