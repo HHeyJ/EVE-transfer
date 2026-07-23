@@ -67,14 +67,6 @@ public class ChannelStore {
     }
 
     /**
-     * 暴露底层监听状态 Map 的引用，供日志摄取线程直接读取判断，
-     * 避免每条日志都走一次方法调用 + Map 复制。仅供只读使用。
-     */
-    public Map<String, Boolean> getListeningView() {
-        return channelListening;
-    }
-
-    /**
      * 往指定频道的缓存里追加一条消息；超出上限时丢弃最早那条。
      * 用消息列表本身作为锁，保证 append + trim 的原子性。
      */

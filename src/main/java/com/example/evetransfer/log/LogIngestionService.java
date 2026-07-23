@@ -2,13 +2,13 @@ package com.example.evetransfer.log;
 
 import com.example.evetransfer.model.ChatMessage;
 import com.example.evetransfer.model.LogFileState;
+import com.example.evetransfer.service.ChannelStore;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 
 /**
  * 日志摄取服务：协调"读取文件 → 解析行 → 产生消息"的流水线。
@@ -125,14 +125,14 @@ public class LogIngestionService {
      * 对未在监听列表中的频道做过滤，避免新频道自动出现在 UI 上。
      * 对每个文件加锁，防止 WatchService + pollDirectory 同时触发导致重复读取。
      */
-    public void handleFileChange(Path path, Map<String, Boolean> channelListening) {
+    public void handleFileChange(Path path, ChannelStore channelStore) {
         // computeIfAbsent 是原子的，返回的 state 对象可作为该文件的锁
         final LogFileState state = fileStates.computeIfAbsent(path, LogFileState::new);
         synchronized (state) {
             try {
 
                 String channelName = Objects.isNull(state.getChannelName()) ? reader.peekChannelName(path, state) : state.getChannelName();
-                if (!channelListening.getOrDefault(channelName,false)) {
+                if (!channelStore.isListening(channelName)) {
                     return;
                 }
 

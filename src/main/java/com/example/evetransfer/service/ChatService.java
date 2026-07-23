@@ -65,7 +65,7 @@ public class ChatService {
 
         monitor = new LogDirectoryMonitor(logDir, path -> {
             ingestionService.registerFile(path);
-            ingestionService.handleFileChange(path, channelStore.getListeningView());
+            ingestionService.handleFileChange(path, channelStore);
         });
         monitor.start();
     }
