@@ -1,5 +1,8 @@
 package com.example.evetransfer.model;
 
+import lombok.Getter;
+import lombok.Setter;
+
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -9,22 +12,21 @@ import java.nio.file.Path;
  * 相当于前端读取大文件时的 "offset 记录器"，
  * 记录：读到哪个字节了、文件是什么编码、频道名是什么。
  */
+@Getter
 public class LogFileState {
 
-    private final Path path;           // 文件路径
-    private Charset charset = StandardCharsets.UTF_8; // 文件编码，默认 UTF-8
-    private long lastReadPosition = 0; // 上次读到的字节位置，下次从这里继续
-    private String channelName;        // 从第一行解析出的频道名，用于缓存
+    private final Path path;
+
+    @Setter
+    private Charset charset = StandardCharsets.UTF_8;
+
+    @Setter
+    private long lastReadPosition = 0;
+
+    @Setter
+    private String channelName;
 
     public LogFileState(Path path) {
         this.path = path;
     }
-
-    public Path getPath() { return path; }
-    public Charset getCharset() { return charset; }
-    public void setCharset(Charset charset) { this.charset = charset; }
-    public long getLastReadPosition() { return lastReadPosition; }
-    public void setLastReadPosition(long pos) { this.lastReadPosition = pos; }
-    public String getChannelName() { return channelName; }
-    public void setChannelName(String name) { this.channelName = name; }
 }
