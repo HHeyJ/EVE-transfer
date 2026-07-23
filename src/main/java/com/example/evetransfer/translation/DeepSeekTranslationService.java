@@ -94,18 +94,37 @@ public class DeepSeekTranslationService implements TranslationService {
 
     /**
      * 手动翻译：把用户输入（一般是中文）翻译成指定目标语言。
+     * 无历史上下文，纯文本进出。
      */
     public CompletableFuture<String> translateTo(String text, String targetLanguage) {
-//        if (text == null || text.isBlank()) {
-//            return CompletableFuture.completedFuture(text);
-//        }
-//        if (apiKey == null || apiKey.isBlank()) {
-//            return CompletableFuture.completedFuture("[未配置 API Key]");
-//        }
-//        String lang = (targetLanguage == null || targetLanguage.isBlank()) ? "English" : targetLanguage;
-//        String prompt = buildOutboundPrompt(lang);
-//        return doRequest(prompt, List.of(), text);
-        return CompletableFuture.completedFuture(text);
+        if (text == null || text.isBlank()) {
+            return CompletableFuture.completedFuture(text);
+        }
+        if (apiKey == null || apiKey.isBlank()) {
+            return CompletableFuture.completedFuture("[未配置 API Key]");
+        }
+        String lang = (targetLanguage == null || targetLanguage.isBlank()) ? "English" : targetLanguage;
+        return doPlainRequest(buildOutboundPrompt(lang), text);
+    }
+
+    private String buildOutboundPrompt(String targetLanguage) {
+        return "你是一个EVE Online游戏聊天翻译器。用户将发送一段中文聊天消息，你需要：\n" +
+                "1. 将内容翻译成 " + targetLanguage + "，只输出译文，不加任何解释、标点或格式标记。\n" +
+                "2. 保留所有EVE特有名词（如舰船名、势力名、物品名、星系名）的英文原文或通用简称（例如：Tengu、Amarr、PLEX、Jita）。\n" +
+                "3. 常用玩家缩写保持原样（o7, gf, brb, FC, DPS, ISK, WH 等）。\n" +
+                "4. 不翻译表情符号（:D, :(, o/）。\n" +
+                "5. 直接输出译文，严禁输出其他内容。";
+    }
+
+    /**
+     * 简化版：无历史、无发言者前缀，只做单条文本翻译。给 translateTo 用。
+     */
+    private CompletableFuture<String> doPlainRequest(String systemPrompt, String userText) {
+        List<Message> messages = List.of(
+                new Message("system", systemPrompt),
+                new Message("user", userText)
+        );
+        return sendChat(messages);
     }
 
     private CompletableFuture<String> doRequest(String systemPrompt, List<ChatMessage> history, ChatMessage msg) {
@@ -125,7 +144,10 @@ public class DeepSeekTranslationService implements TranslationService {
             }
         }
         messages.add(new Message("user", msg.getPlayer() + " > " + msg.getOriginal()));
+        return sendChat(messages);
+    }
 
+    private CompletableFuture<String> sendChat(List<Message> messages) {
         ChatRequest requestBody = new ChatRequest(
                 MODEL,
                 messages,
